@@ -3,7 +3,10 @@ name = "clubmaquis"
 version = "0.1.0"
 description = "Cat DJ video processing pipeline - multi-source sync, activity detection, AI music generation"
 requires-python = ">=3.11"
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+pipeline = [
     "numpy>=1.26.0",
     "scipy>=1.11.0",
     "opencv-python>=4.8.0",
