@@ -487,14 +487,15 @@ def merge_gitignore(source_path: Path, target_path: Path) -> bool:
     ]
 
     if not target_file.exists():
-        # Create .gitignore with workflow patterns
+        # Create .gitignore - use source as base if it exists, then add workflow patterns
         if source_file.exists():
             shutil.copy2(source_file, target_file)
             print_success("Copied .gitignore from source")
+            # Continue to add workflow patterns below (don't return early)
         else:
             target_file.write_text("\n".join(workflow_patterns) + "\n")
             print_success("Created .gitignore with workflow patterns")
-        return True
+            return True
 
     # Read existing
     existing_lines = target_file.read_text().split("\n")

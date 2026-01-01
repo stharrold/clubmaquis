@@ -239,7 +239,7 @@ def archive_todo_file(todo_path, version):
     try:
         description = f"release-{version.replace('.', '-')}"
 
-        subprocess.run(["python3", str(deprecate_script), str(todo_path), description, str(todo_path)], capture_output=True, check=True)
+        subprocess.run([sys.executable, str(deprecate_script), str(todo_path), description, str(todo_path)], capture_output=True, check=True)
 
     except subprocess.CalledProcessError as e:
         print(f"Warning: Failed to archive TODO file: {e.stderr.decode()}", file=sys.stderr)
