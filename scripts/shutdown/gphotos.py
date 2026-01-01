@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Google Photos upload via gphotos-uploader-cli.
 
 Provides functions to upload session files to Google Photos.
@@ -66,7 +66,7 @@ def upload_session(
     if not is_cli_available():
         return OperationResult(
             success=False,
-            message="gphotos-uploader-cli is not installed. Install with: brew install gphotos-uploader-cli",
+            message="gphotos-uploader-cli is not installed. Install with: brew install gphotos-uploader-cli (macOS only)",
             details={"files_processed": [], "files_failed": []},
         )
 

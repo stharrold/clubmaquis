@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """QuickTime Player control via AppleScript.
 
 Provides functions to stop recordings and manage QuickTime Player.

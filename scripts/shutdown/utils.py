@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Shared utilities for shutdown scripts.
 
 Provides common AppleScript operations and result types.
@@ -187,9 +187,6 @@ def wait_for_files_stable(
             if file_path not in last_sizes or last_sizes[file_path] != current_size:
                 last_sizes[file_path] = current_size
                 stable_since[file_path] = time.time()
-            elif time.time() - stable_since.get(file_path, time.time()) >= stability_seconds:
-                # File is stable
-                pass
 
         # Check if all found files are stable
         stable_files = [

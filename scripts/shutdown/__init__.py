@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Shutdown script for Club Maquis recording sessions.
 
 This module provides utilities to gracefully stop all recording sources,

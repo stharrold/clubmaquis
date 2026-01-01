@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Shutdown script for Club Maquis recording sessions.
 
 Usage:
@@ -20,6 +20,7 @@ Note: Chrome MCP tab should be closed by Claude before running this script.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -35,7 +36,8 @@ from scripts.shutdown.utils import wait_for_files_stable  # noqa: E402
 from src.clubmaquis.session_logger import ActionStatus, ActionType, SessionLogger  # noqa: E402
 
 # Base directory for all Club Maquis sessions
-BASE_DATA_DIR = Path("/Users/stharrold/Documents/Data/ClubMaquis")
+# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise default to ~/Documents/Data/ClubMaquis
+BASE_DATA_DIR = Path(os.environ.get("CLUBMAQUIS_DATA_DIR", Path.home() / "Documents" / "Data" / "ClubMaquis"))
 
 # Desktop path for QuickTime recordings
 DESKTOP_PATH = Path.home() / "Desktop"
@@ -295,7 +297,7 @@ def run_shutdown(session_id: str) -> int:
 
     if moved_files:
         logger.log_success(
-            ActionType.QUICKTIME_SAVE,
+            ActionType.FILE_MOVE,
             f"Saved {len(moved_files)} QuickTime recording(s) to session",
             details={"files": [str(f) for f in moved_files]},
         )
@@ -310,7 +312,7 @@ def run_shutdown(session_id: str) -> int:
 
     # Step 5: Copy Ableton project files
     logger.log_start(
-        ActionType.ABLETON_CLOSE,
+        ActionType.FILE_MOVE,
         "Copying Ableton project files",
         details={
             "source": str(ableton.DEFAULT_USER_LIBRARY),
@@ -324,13 +326,13 @@ def run_shutdown(session_id: str) -> int:
 
     if ableton_result.success:
         logger.log_success(
-            ActionType.ABLETON_CLOSE,
+            ActionType.FILE_MOVE,
             ableton_result.message,
             details={"files_copied": [str(f) for f in ableton_result.files_processed]},
         )
     else:
         logger.log_failed(
-            ActionType.ABLETON_CLOSE,
+            ActionType.FILE_MOVE,
             ableton_result.message,
             details={
                 "files_copied": [str(f) for f in ableton_result.files_processed],
