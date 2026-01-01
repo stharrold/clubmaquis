@@ -52,11 +52,17 @@ from pathlib import Path
 # Add workflow-utilities to path for safe_output
 # Use resolve() to get canonical path and validate it's within expected structure
 _script_dir = Path(__file__).resolve().parent
-_skills_dir = _script_dir.parent.parent
+_skills_dir = _script_dir.parent.parent.resolve()
 _utils_path = (_skills_dir / "workflow-utilities" / "scripts").resolve()
 # Validate path is within skills directory (prevents path traversal attacks)
-if not str(_utils_path).startswith(str(_skills_dir.resolve())):
-    raise RuntimeError("Invalid path: workflow-utilities not in expected location")
+try:
+    # Python 3.9+: use is_relative_to for robust containment check
+    if not _utils_path.is_relative_to(_skills_dir):
+        raise RuntimeError("Invalid path: workflow-utilities not in expected location")
+except AttributeError:
+    # Python < 3.9 fallback: check that skills_dir is one of the parents of utils_path
+    if _skills_dir not in _utils_path.parents:
+        raise RuntimeError("Invalid path: workflow-utilities not in expected location")
 sys.path.insert(0, str(_utils_path))
 from safe_output import (
     SYMBOLS,
@@ -80,6 +86,9 @@ DEFAULT_DEV_DEPENDENCIES = [
 # tech-stack-adapter, workflow-utilities, agentdb-state-manager, initialize-repository).
 # We require at least 3 to catch incomplete or corrupted installations.
 MIN_EXPECTED_SKILLS = 3
+
+# TOML formatting constants
+DEP_SEPARATOR = ",\n    "
 
 
 def validate_source(source_path: Path) -> tuple[bool, str]:
@@ -386,7 +395,7 @@ def merge_pyproject_toml(source_path: Path, target_path: Path) -> bool:
         dev_deps = DEFAULT_DEV_DEPENDENCIES.copy()
 
     # Format dev deps for TOML output
-    formatted_deps = ",\n    ".join(f'"{dep}"' for dep in dev_deps)
+    formatted_deps = DEP_SEPARATOR.join(f'"{dep}"' for dep in dev_deps)
 
     if not target_file.exists():
         # Create minimal pyproject.toml
