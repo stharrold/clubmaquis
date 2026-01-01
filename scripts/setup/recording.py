@@ -22,6 +22,7 @@ from pathlib import Path
 
 from scripts.common.logger import JSONLLogger
 from scripts.setup.launchers import check_launchpad, launch_chrome_to_url, launch_quicktime
+from scripts.setup.launchpad_lights import start_cat_lights, stop_cat_lights
 
 # Base directory for all Club Maquis session data (Google Drive)
 # Can be overridden via CLUB_MAQUIS_DATA_DIR environment variable
@@ -162,11 +163,20 @@ Examples:
 
     # Track failures for exit code
     failures = 0
+    launchpad_lights = None
 
     # Pre-flight check: Launchpad (warning only, not critical)
     print("Checking Launchpad connection...")
-    if check_launchpad(logger):
+    launchpad_connected = check_launchpad(logger)
+    if launchpad_connected:
         print("  [OK] Launchpad Mini MK3 connected")
+        # Start cat-enticing light pattern to attract Nerys
+        print("  Starting cat-enticing light pattern...")
+        launchpad_lights = start_cat_lights(logger)
+        if launchpad_lights:
+            print("  [OK] Light pattern running (chase with warm colors)")
+        else:
+            print("  [!!] Could not start light pattern (mido not installed?)")
     else:
         print("  [!!] Launchpad not detected - check USB connection")
     print()
@@ -190,10 +200,25 @@ Examples:
         failures += 1
 
     # Log setup complete
-    logger.log("setup_complete", failures=failures, session_dir=str(session_dir))
+    logger.log("setup_complete", failures=failures, session_dir=str(session_dir), launchpad_lights=launchpad_lights is not None)
 
     # Display manual steps
     display_reminders(session_dir)
+
+    # Note about Launchpad lights
+    if launchpad_lights:
+        print()
+        print("  [*] Launchpad lights are running to attract Nerys!")
+        print("      Press Ctrl+C when ready to stop lights and exit.")
+        print()
+        try:
+            # Keep running until user is ready
+            input("  Press ENTER to stop lights and exit...")
+        except KeyboardInterrupt:
+            print()
+        finally:
+            stop_cat_lights(launchpad_lights)
+            print("  [OK] Launchpad lights stopped")
 
     print(f"Session: {session_dir}")
     print(f"Log: {log_path}")
