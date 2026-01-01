@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -22,7 +23,6 @@ from pathlib import Path
 
 from scripts.common.logger import JSONLLogger
 from scripts.setup.launchers import check_launchpad, launch_chrome_to_url, launch_quicktime
-from scripts.setup.launchpad_lights import start_cat_lights, stop_cat_lights
 
 # Base directory for all Club Maquis session data (Google Drive)
 # Can be overridden via CLUB_MAQUIS_DATA_DIR environment variable
@@ -163,20 +163,32 @@ Examples:
 
     # Track failures for exit code
     failures = 0
-    launchpad_lights = None
+    lights_pid = None
 
     # Pre-flight check: Launchpad (warning only, not critical)
     print("Checking Launchpad connection...")
     launchpad_connected = check_launchpad(logger)
     if launchpad_connected:
         print("  [OK] Launchpad Mini MK3 connected")
-        # Start cat-enticing light pattern to attract Nerys
-        print("  Starting cat-enticing light pattern...")
-        launchpad_lights = start_cat_lights(logger)
-        if launchpad_lights:
-            print("  [OK] Light pattern running (chase with warm colors)")
-        else:
-            print("  [!!] Could not start light pattern (mido not installed?)")
+        # Start cat-enticing light pattern as background process
+        print("  Starting hunt pattern (runs until shutdown)...")
+        try:
+            # Spawn lights as independent background process
+            lights_process = subprocess.Popen(
+                [sys.executable, "-m", "scripts.setup.run_lights", "--pattern", "hunt"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent process
+            )
+            lights_pid = lights_process.pid
+            # Save PID to session directory for shutdown script
+            pid_file = session_dir / "lights.pid"
+            pid_file.write_text(str(lights_pid))
+            logger.log("launchpad_lights", status="started", pattern="hunt", pid=lights_pid, pid_file=str(pid_file))
+            print(f"  [OK] Hunt pattern running (PID: {lights_pid})")
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"  [!!] Could not start light pattern: {e}")
+            logger.log("launchpad_lights", status="error", error=str(e))
     else:
         print("  [!!] Launchpad not detected - check USB connection")
     print()
@@ -200,25 +212,17 @@ Examples:
         failures += 1
 
     # Log setup complete
-    logger.log("setup_complete", failures=failures, session_dir=str(session_dir), launchpad_lights=launchpad_lights is not None)
+    logger.log("setup_complete", failures=failures, session_dir=str(session_dir), lights_pid=lights_pid)
 
     # Display manual steps
     display_reminders(session_dir)
 
     # Note about Launchpad lights
-    if launchpad_lights:
+    if lights_pid:
         print()
-        print("  [*] Launchpad lights are running to attract Nerys!")
-        print("      Press Ctrl+C when ready to stop lights and exit.")
+        print("  [*] Hunt pattern running continuously to attract Nerys!")
+        print("      Lights will stop when you run the shutdown script.")
         print()
-        try:
-            # Keep running until user is ready
-            input("  Press ENTER to stop lights and exit...")
-        except KeyboardInterrupt:
-            print()
-        finally:
-            stop_cat_lights(launchpad_lights)
-            print("  [OK] Launchpad lights stopped")
 
     print(f"Session: {session_dir}")
     print(f"Log: {log_path}")

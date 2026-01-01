@@ -91,9 +91,10 @@ scripts/
 ├── setup/
 │   ├── recording.py          # Create session dir, launch apps, start Launchpad lights
 │   ├── launchers.py          # App launching utilities (QuickTime, Chrome)
-│   └── launchpad_lights.py   # Cat-enticing LED patterns for Launchpad Mini MK3
+│   ├── launchpad_lights.py   # Cat-enticing LED patterns for Launchpad Mini MK3
+│   └── run_lights.py         # Standalone lights runner (background process)
 ├── shutdown/
-│   ├── main.py               # CLI: prompts user to save files, logs session
+│   ├── main.py               # CLI: stops lights, prompts user to save files, logs session
 │   ├── quicktime.py          # AppleScript control for QuickTime
 │   └── utils.py              # Shared AppleScript utilities
 └── process/                  # (future) Run pipeline
@@ -101,25 +102,38 @@ scripts/
 
 ### Launchpad Light Patterns
 
-The setup script automatically runs cat-enticing light patterns on the Launchpad Mini MK3 to attract Nerys:
-- **7 patterns** cycle randomly every 8 seconds: snake, sparkle, rain, spiral, wave, diagonal, expand
+The setup script runs cat-enticing light patterns on the Launchpad Mini MK3 to attract Nerys:
+
+**Default: Hunt Pattern** (snake chases dot)
+- Snake: 5-segment gradient from bright white (head) → yellow → orange → red (tail)
+- Dot: Bright cool colors (cyan, blue, teal, purple, magenta, green) - changes on catch
+- Snake moves 4 directions (up/down/left/right), dot moves 8 directions
+- Both bounded to 8x8 grid (no wrapping)
+- Tuned for ~10 second average chase duration
+- 12 corner cells forbidden to prevent dot sticking
+
+**Alternative: Random Patterns** (`--pattern random`)
+- 8 patterns cycle every 8 seconds: snake, sparkle, rain, spiral, wave, diagonal, expand, hunt
+
+**Technical details:**
 - Uses MIDI port (not DAW port) for LED control
+- Runs as background process (PID saved to `lights.pid`)
 - Based on Launchpad Mini MK3 Programmer's Reference Manual (`docs/`)
-- Patterns use warm colors (red, orange, yellow) that cats notice
 
 **Setup script workflow**:
 1. Creates session directory in Google Drive
-2. Detects Launchpad and starts light patterns (if connected)
+2. Detects Launchpad and starts hunt pattern as background process
 3. Launches QuickTime Player
 4. Opens Chrome to cat TV URL
 5. Displays manual steps for recording
-6. Lights run until user presses Enter
+6. Script exits; lights continue running
 
 **Shutdown script workflow**:
-1. Prompts user to save QuickTime recordings to session directory
-2. Prompts user to AirDrop iPhone video to session directory
-3. Waits for user confirmation
-4. Scans and logs all files with absolute paths
+1. Stops Launchpad lights process (reads PID from `lights.pid`)
+2. Prompts user to save QuickTime recordings to session directory
+3. Prompts user to AirDrop iPhone video to session directory
+4. Waits for user confirmation
+5. Scans and logs all files with absolute paths
 
 ## Key Technical Concepts
 

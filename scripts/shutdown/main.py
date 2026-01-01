@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import signal
 import sys
 from pathlib import Path
 
@@ -102,6 +103,33 @@ def find_session_files(session_dir: Path) -> list[Path]:
     return sorted([f.resolve() for f in session_dir.iterdir() if f.is_file()])
 
 
+def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
+    """Stop the Launchpad lights background process.
+
+    Args:
+        session_dir: Path to session directory containing lights.pid.
+
+    Returns:
+        Tuple of (success, pid) - pid is None if no PID file found.
+    """
+    pid_file = session_dir / "lights.pid"
+    if not pid_file.exists():
+        return True, None
+
+    try:
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, signal.SIGTERM)
+        pid_file.unlink()  # Remove PID file
+        return True, pid
+    except (ValueError, ProcessLookupError):
+        # PID invalid or process already gone
+        if pid_file.exists():
+            pid_file.unlink()
+        return True, None
+    except PermissionError:
+        return False, None
+
+
 def display_save_prompts(session_dir: Path, session_id: str) -> None:
     """Display prompts for user to save files.
 
@@ -174,6 +202,28 @@ def run_shutdown(session_id: str) -> int:
     print(f"+{'=' * BANNER_WIDTH}+")
     print(f"|{'CLUB MAQUIS SHUTDOWN':^{BANNER_WIDTH}}|")
     print(f"+{'=' * BANNER_WIDTH}+")
+
+    # Stop Launchpad lights first
+    print()
+    print("Stopping Launchpad lights...")
+    lights_stopped, lights_pid = stop_launchpad_lights(session_dir)
+    if lights_pid:
+        print(f"  [OK] Lights stopped (PID: {lights_pid})")
+        logger.log(
+            ActionType.APP_CLOSE,
+            ActionStatus.SUCCESS,
+            "Stopped Launchpad lights",
+            details={"pid": lights_pid},
+        )
+    elif lights_stopped:
+        print("  [--] No lights process found (already stopped or not started)")
+    else:
+        print("  [!!] Failed to stop lights process")
+        logger.log(
+            ActionType.APP_CLOSE,
+            ActionStatus.FAILED,
+            "Failed to stop Launchpad lights",
+        )
 
     # Display save prompts
     display_save_prompts(session_dir, session_id)

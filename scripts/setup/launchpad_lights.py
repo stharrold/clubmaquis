@@ -46,17 +46,13 @@ PAD_GRID = [
     [11, 12, 13, 14, 15, 16, 17, 18],  # Bottom row
 ]
 
-# Warm color palette indices from the Launchpad color palette
-# These are high-contrast, attention-grabbing colors
+# Snake colors: gradient from bright white head to bright red tail (length=5)
 WARM_COLORS = [
-    5,   # Red
-    6,   # Red-orange
-    9,   # Orange
-    10,  # Orange-yellow
-    13,  # Yellow
-    12,  # Amber
+    3,   # Bright white (head)
+    68,  # Bright yellow
     72,  # Bright orange
-    84,  # Bright red
+    60,  # Bright red-orange
+    84,  # Bright red (tail)
 ]
 
 # Animation speed (seconds between frames)
@@ -82,21 +78,38 @@ ALL_COLORS = [
     84,  # Bright red
 ]
 
-# Cool colors for the dot (prey)
+# Cool colors for the dot (prey) - bright and varied
 COOL_COLORS = [
-    37,  # Cyan
-    41,  # Light blue
-    45,  # Blue
-    49,  # Purple
     79,  # Bright cyan
     78,  # Bright blue
+    80,  # Bright teal 1
+    81,  # Bright teal 2
+    82,  # Bright sky 1
+    83,  # Bright sky 2
+    85,  # Bright indigo 1
+    86,  # Bright indigo 2
+    87,  # Bright purple 1
+    88,  # Bright purple 2
+    89,  # Bright magenta 1
+    90,  # Bright magenta 2
+    77,  # Bright green 2
+    76,  # Bright green 1
+    73,  # Bright lime 1
 ]
 
 # Snake movement directions (up, down, left, right only)
 SNAKE_DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
-# Dot movement directions (8 directions including diagonals)
+# Dot movement directions (all 8 directions)
 DOT_DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+
+# Forbidden dot positions (3 cells in each corner)
+DOT_FORBIDDEN = {
+    (0, 0), (0, 1), (1, 0),  # TL corner
+    (0, 7), (0, 6), (1, 7),  # TR corner
+    (7, 0), (6, 0), (7, 1),  # BL corner
+    (7, 7), (7, 6), (6, 7),  # BR corner
+}
 
 
 class LaunchpadLights:
@@ -427,8 +440,8 @@ class LaunchpadLights:
         """
         end_time = time.time() + duration
         snake_length = 5
-        snake_speed = 0.1  # seconds per move
-        dot_speed = 0.2    # half as fast
+        snake_speed = 0.135  # seconds per move
+        dot_speed = 0.15     # seconds per move (~10s avg chase)
 
         # Initialize snake in center, moving right
         snake: list[tuple[int, int]] = [(3, 3 - i) for i in range(snake_length)]
@@ -447,16 +460,26 @@ class LaunchpadLights:
             # Move snake
             if now - last_snake_move >= snake_speed:
                 # Choose direction toward dot
-                snake_dir = self._choose_snake_direction(snake[0], dot, snake_dir)
-                # Move head (with wrapping)
-                new_head = ((snake[0][0] + snake_dir[0]) % 8, (snake[0][1] + snake_dir[1]) % 8)
-                snake = [new_head] + snake[:-1]  # Fixed length
+                snake_dir = self._choose_snake_direction(snake[0], dot, snake_dir, snake)
+                # Move head (NO wrapping - stay on square)
+                new_r = snake[0][0] + snake_dir[0]
+                new_c = snake[0][1] + snake_dir[1]
+                # Clamp to grid bounds
+                new_r = max(0, min(7, new_r))
+                new_c = max(0, min(7, new_c))
+                new_head = (new_r, new_c)
+                # Only move if not hitting own body
+                if new_head not in snake[1:]:
+                    snake = [new_head] + snake[:-1]
                 last_snake_move = now
 
                 # Check if caught dot
                 if snake[0] == dot:
                     dot = self._spawn_dot_away_from(snake)
-                    dot_color_idx = (dot_color_idx + 1) % len(COOL_COLORS)
+                    # Ensure new color is different from current
+                    old_color_idx = dot_color_idx
+                    while dot_color_idx == old_color_idx:
+                        dot_color_idx = random.randint(0, len(COOL_COLORS) - 1)
 
             # Move dot (half as often)
             if now - last_dot_move >= dot_speed:
@@ -479,11 +502,11 @@ class LaunchpadLights:
             time.sleep(0.03)
 
     def _spawn_dot_away_from(self, snake: list[tuple[int, int]]) -> tuple[int, int]:
-        """Spawn dot at random position not occupied by snake."""
+        """Spawn dot at random position not occupied by snake or forbidden."""
         snake_set = set(snake)
         while True:
             r, c = random.randint(0, 7), random.randint(0, 7)
-            if (r, c) not in snake_set:
+            if (r, c) not in snake_set and (r, c) not in DOT_FORBIDDEN:
                 # Prefer positions far from snake head
                 head = snake[0]
                 dist = abs(r - head[0]) + abs(c - head[1])
@@ -491,65 +514,125 @@ class LaunchpadLights:
                     return (r, c)
 
     def _choose_snake_direction(
-        self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int]
+        self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int],
+        snake_body: list[tuple[int, int]]
     ) -> tuple[int, int]:
-        """Choose snake direction toward dot (only 4 directions)."""
+        """Choose snake direction toward dot (square geometry, no wrapping)."""
         hr, hc = head
         dr, dc = dot
 
-        # Calculate wrapped distances
-        row_diff = (dr - hr + 4) % 8 - 4  # -4 to +3
-        col_diff = (dc - hc + 4) % 8 - 4
+        # Calculate direct distances on square (no wrapping)
+        row_diff = dr - hr
+        col_diff = dc - hc
 
-        # Prefer direction that closes more distance
-        candidates = []
-        if row_diff < 0:
-            candidates.append((-1, 0))  # up
-        elif row_diff > 0:
-            candidates.append((1, 0))   # down
-        if col_diff < 0:
-            candidates.append((0, -1))  # left
-        elif col_diff > 0:
-            candidates.append((0, 1))   # right
+        # Build list of valid directions (not blocked by wall or body)
+        valid_dirs = []
+        for d in SNAKE_DIRS:
+            new_r = hr + d[0]
+            new_c = hc + d[1]
+            # Check bounds (snake stays on square)
+            if 0 <= new_r <= 7 and 0 <= new_c <= 7:
+                # Check not hitting own body
+                if (new_r, new_c) not in snake_body[1:]:
+                    valid_dirs.append(d)
 
-        if candidates:
-            # Slight randomness to make it interesting
-            if random.random() > 0.8 and len(candidates) > 1:
-                return random.choice(candidates)
-            # Prefer direction with larger distance
-            if abs(row_diff) > abs(col_diff):
-                return (-1, 0) if row_diff < 0 else (1, 0)
-            else:
-                return (0, -1) if col_diff < 0 else (0, 1)
+        if not valid_dirs:
+            return current_dir  # Stuck
 
-        return current_dir  # Keep current if at target
+        # Score each valid direction by how much it reduces distance to dot
+        def score_dir(d: tuple[int, int]) -> int:
+            # Higher score = better (reduces distance more)
+            score = 0
+            if row_diff > 0 and d[0] > 0:
+                score += abs(row_diff)  # Moving down toward dot below
+            elif row_diff < 0 and d[0] < 0:
+                score += abs(row_diff)  # Moving up toward dot above
+            if col_diff > 0 and d[1] > 0:
+                score += abs(col_diff)  # Moving right toward dot right
+            elif col_diff < 0 and d[1] < 0:
+                score += abs(col_diff)  # Moving left toward dot left
+            return score
+
+        # Sort by score descending
+        scored = [(score_dir(d), d) for d in valid_dirs]
+        scored.sort(key=lambda x: -x[0])
+
+        # Pick best direction, with slight randomness
+        if len(scored) > 1 and scored[0][0] == scored[1][0] and random.random() > 0.5:
+            return scored[1][1]
+        return scored[0][1]
+
+    def _figure8_wrap(self, r: int, c: int) -> tuple[int, int]:
+        """Wrap coordinates on figure-8 topology.
+
+        Twisted figure-8: top↔left, bottom↔right (preserves corners).
+        - (0,0) TL → (0,0) TL (stays)
+        - (0,7) TR → (7,0) BL (swaps)
+        - (7,7) BR → (7,7) BR (stays)
+        - (7,0) BL → (0,7) TR (swaps)
+        """
+        # Clamp for edge position
+        c_clamped = max(0, min(7, c))
+        r_clamped = max(0, min(7, r))
+
+        # Handle row overflow/underflow first
+        if r < 0:
+            # Off top → left edge, column becomes row
+            return (c_clamped, 0)
+        elif r > 7:
+            # Off bottom → right edge, column becomes row
+            return (c_clamped, 7)
+
+        # Handle column overflow/underflow
+        if c < 0:
+            # Off left → top edge, row becomes column
+            return (0, r_clamped)
+        elif c > 7:
+            # Off right → bottom edge, row becomes column
+            return (7, r_clamped)
+
+        return (r, c)
 
     def _move_dot_away(self, dot: tuple[int, int], snake_head: tuple[int, int]) -> tuple[int, int]:
-        """Move dot away from snake head (8 directions, with wrapping)."""
+        """Move dot away from snake head (bounded square, no wrapping)."""
         dr, dc = dot
         hr, hc = snake_head
 
-        # Calculate direction away from snake (wrapped)
-        row_diff = (dr - hr + 4) % 8 - 4
-        col_diff = (dc - hc + 4) % 8 - 4
+        def square_distance(r1: int, c1: int, r2: int, c2: int) -> int:
+            """Calculate Manhattan distance on square (no wrapping)."""
+            return abs(r1 - r2) + abs(c1 - c2)
 
-        # Find directions that move away from snake
-        away_dirs = []
+        current_dist = square_distance(dr, dc, hr, hc)
+
+        # Score each direction, clamping to grid bounds (no wrapping)
+        scored_dirs = []
         for d in DOT_DIRS:
-            # Would this direction increase distance?
-            new_row_diff = row_diff + d[0]
-            new_col_diff = col_diff + d[1]
-            if abs(new_row_diff) + abs(new_col_diff) >= abs(row_diff) + abs(col_diff):
-                away_dirs.append(d)
+            new_r = max(0, min(7, dr + d[0]))
+            new_c = max(0, min(7, dc + d[1]))
+            # Skip if didn't actually move (hit wall)
+            if (new_r, new_c) == (dr, dc):
+                continue
+            # Skip forbidden positions
+            if (new_r, new_c) in DOT_FORBIDDEN:
+                continue
+            new_dist = square_distance(new_r, new_c, hr, hc)
+            # Prefer directions that increase distance from snake
+            scored_dirs.append((new_dist - current_dist, d))
 
-        # If no away directions (cornered), pick random
-        if not away_dirs:
-            away_dirs = DOT_DIRS
+        # If all directions blocked, stay in place
+        if not scored_dirs:
+            return dot
 
-        # Pick random away direction
-        direction = random.choice(away_dirs)
-        new_r = (dr + direction[0]) % 8
-        new_c = (dc + direction[1]) % 8
+        # Sort by distance increase (descending)
+        scored_dirs.sort(key=lambda x: -x[0])
+
+        # Pick from best directions with some randomness
+        best_score = scored_dirs[0][0]
+        best_dirs = [d for score, d in scored_dirs if score == best_score]
+        direction = random.choice(best_dirs)
+
+        new_r = max(0, min(7, dr + direction[0]))
+        new_c = max(0, min(7, dc + direction[1]))
         return (new_r, new_c)
 
     def _run_hunt_loop(self) -> None:
