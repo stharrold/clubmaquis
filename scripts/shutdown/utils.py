@@ -62,12 +62,18 @@ def is_app_running(process_name: str) -> bool:
 def quit_app(app_name: str, process_name: str | None = None) -> OperationResult:
     """Quit a macOS application via AppleScript.
 
+    This function sends a quit command to the target application but does not
+    wait for the application process to fully terminate. Callers that need to
+    ensure the application has actually exited should perform their own
+    follow-up check (for example, by calling :func:`is_app_running`).
+
     Args:
         app_name: Application name for AppleScript (e.g., "QuickTime Player").
         process_name: Process name for is_running check (defaults to app_name).
 
     Returns:
-        OperationResult with success status.
+        OperationResult indicating whether the quit command was sent
+        successfully, not whether the application has fully terminated.
     """
     process_name = process_name or app_name
 

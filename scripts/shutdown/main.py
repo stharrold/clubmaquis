@@ -55,6 +55,9 @@ QUICKTIME_PATTERNS = {
 QUICKTIME_SAVE_TIMEOUT = 30.0
 QUICKTIME_STABILITY_TIME = 2.0
 
+# Script version for logging
+SCRIPT_VERSION = "1.1.0"
+
 
 def validate_session_id(session_id: str) -> bool:
     """Validate session ID matches YYYYMMDDTHHMMSSZ format."""
@@ -243,7 +246,7 @@ def run_shutdown(session_id: str) -> int:
             "ableton_user_library": str(ableton.DEFAULT_USER_LIBRARY),
             "quicktime_patterns": QUICKTIME_PATTERNS,
             "quicktime_save_timeout": QUICKTIME_SAVE_TIMEOUT,
-            "script_version": "1.1.0",
+            "script_version": SCRIPT_VERSION,
         },
     )
 

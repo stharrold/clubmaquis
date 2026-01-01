@@ -53,8 +53,8 @@ class SessionLogger:
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_timestamp(self) -> str:
-        """Get current UTC timestamp in ISO 8601 format."""
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        """Get current UTC timestamp in ISO 8601 format with milliseconds."""
+        return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     def log(
         self,
