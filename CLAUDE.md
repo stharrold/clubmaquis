@@ -22,9 +22,10 @@ uv run ruff format .                       # Format code
 uv run pre-commit install                  # Install hooks (one-time)
 uv run pre-commit run --all-files          # Run manually
 
-# Testing (infrastructure ready, tests pending v0.2.0)
-uv run pytest                              # Run tests
+# Testing
+uv run pytest                              # Run all tests
 uv run pytest -v -k test_name              # Single test
+uv run pytest tests/test_launchpad_lights.py -v  # Test specific module
 
 # Session management scripts (in scripts/)
 uv run python scripts/shutdown/main.py 20251231T120000Z  # Shutdown recording session
@@ -77,7 +78,7 @@ sessions/[date]/
 - **MIDI controller**: Novation Launchpad Mini MK3
 - **Sync method**: Clap at session start creates audio transient for alignment
 - **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV) + Launchpad light patterns
-- **Session data**: `~/Library/CloudStorage/GoogleDrive-samuel.harrold@gmail.com/My Drive/My_Drive/ClubMaquis/YYYYMMDDTHHMMSSZ/`
+- **Session data**: Auto-discovered Google Drive path (`~/Library/CloudStorage/GoogleDrive-*/My Drive/My_Drive/ClubMaquis/YYYYMMDDTHHMMSSZ/`) or `CLUBMAQUIS_DATA_DIR` env var
 - **Session log**: `YYYYMMDDTHHMMSSZ_log.jsonl` with self-documenting entries and absolute file paths
 - **File naming**: User names files as `YYYYMMDD_<type>.mov` (e.g., `20250101_webcam.mov`)
 
