@@ -52,11 +52,11 @@ PAD_GRID = [
 #   Row 1 (8-15): reds(5-7), oranges(8-11), yellows(12-15)
 #   Bright colors: 5=red, 9=orange, 13=yellow
 WARM_COLORS = [
-    3,   # Bright white (head)
+    3,  # Bright white (head)
     13,  # Bright yellow
-    9,   # Bright orange
-    6,   # Red-orange (medium red)
-    5,   # Bright red (tail)
+    9,  # Bright orange
+    6,  # Red-orange (medium red)
+    5,  # Bright red (tail)
 ]
 
 # Animation speed (seconds between frames)
@@ -67,8 +67,8 @@ PATTERN_DURATION = 8
 
 # All bright colors for variety (from palette page 11)
 ALL_COLORS = [
-    5,   # Bright red
-    9,   # Bright orange
+    5,  # Bright red
+    9,  # Bright orange
     13,  # Bright yellow
     17,  # Bright lime-green
     21,  # Bright green
@@ -105,10 +105,18 @@ DOT_DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)
 
 # Forbidden dot positions (3 cells in each corner)
 DOT_FORBIDDEN = {
-    (0, 0), (0, 1), (1, 0),  # TL corner
-    (0, 7), (0, 6), (1, 7),  # TR corner
-    (7, 0), (6, 0), (7, 1),  # BL corner
-    (7, 7), (7, 6), (6, 7),  # BR corner
+    (0, 0),
+    (0, 1),
+    (1, 0),  # TL corner
+    (0, 7),
+    (0, 6),
+    (1, 7),  # TR corner
+    (7, 0),
+    (6, 0),
+    (7, 1),  # BL corner
+    (7, 7),
+    (7, 6),
+    (6, 7),  # BR corner
 }
 
 
@@ -130,6 +138,60 @@ class LaunchpadLights:
         self._outport: mido.ports.BaseOutput | None = None
         self._running = False
         self._thread: threading.Thread | None = None
+
+    @property
+    def running(self) -> bool:
+        """Whether the light pattern is currently running."""
+        return self._running
+
+    @running.setter
+    def running(self, value: bool) -> None:
+        """Set the running state."""
+        self._running = value
+
+    def enter_programmer_mode(self) -> None:
+        """Enter programmer mode for full LED control (public wrapper)."""
+        self._enter_programmer_mode()
+
+    def exit_programmer_mode(self) -> None:
+        """Exit programmer mode (public wrapper)."""
+        self._exit_programmer_mode()
+
+    def clear_all_leds(self) -> None:
+        """Turn off all LEDs (public wrapper)."""
+        self._clear_all_leds()
+
+    def pattern_snake(self, duration: float) -> None:
+        """Run snake pattern (public wrapper)."""
+        self._pattern_snake(duration)
+
+    def pattern_sparkle(self, duration: float) -> None:
+        """Run sparkle pattern (public wrapper)."""
+        self._pattern_sparkle(duration)
+
+    def pattern_rain(self, duration: float) -> None:
+        """Run rain pattern (public wrapper)."""
+        self._pattern_rain(duration)
+
+    def pattern_spiral(self, duration: float) -> None:
+        """Run spiral pattern (public wrapper)."""
+        self._pattern_spiral(duration)
+
+    def pattern_wave(self, duration: float) -> None:
+        """Run wave pattern (public wrapper)."""
+        self._pattern_wave(duration)
+
+    def pattern_diagonal(self, duration: float) -> None:
+        """Run diagonal pattern (public wrapper)."""
+        self._pattern_diagonal(duration)
+
+    def pattern_expand(self, duration: float) -> None:
+        """Run expand pattern (public wrapper)."""
+        self._pattern_expand(duration)
+
+    def pattern_hunt(self, duration: float) -> None:
+        """Run hunt pattern (public wrapper)."""
+        self._pattern_hunt(duration)
 
     def _log(self, action: str, **kwargs) -> None:
         """Log an action if logger is available."""
@@ -176,7 +238,7 @@ class LaunchpadLights:
                 self._clear_all_leds()
                 self._outport.close()
             except (OSError, ValueError):
-                pass
+                pass  # Ignore cleanup errors during disconnect; port may already be closed
             self._outport = None
 
     def _send_sysex(self, data: list[int]) -> None:
@@ -434,14 +496,14 @@ class LaunchpadLights:
         - Snake moves up/down/left/right only
         - Dot moves in 8 directions (including diagonals)
         - Dot moves half as fast, away from snake
-        - Board wraps around (torus topology)
+        - Board is bounded (no wrap-around; edges are walls)
         - When snake catches dot, new dot spawns
         - Snake length is fixed (doesn't grow)
         """
         end_time = time.time() + duration
         snake_length = 5
         snake_speed = 0.135  # seconds per move
-        dot_speed = 0.15     # seconds per move (~10s avg chase)
+        dot_speed = 0.15  # seconds per move (~10s avg chase)
 
         # Initialize snake in center, moving right
         snake: list[tuple[int, int]] = [(3, 3 - i) for i in range(snake_length)]
@@ -504,19 +566,36 @@ class LaunchpadLights:
     def _spawn_dot_away_from(self, snake: list[tuple[int, int]]) -> tuple[int, int]:
         """Spawn dot at random position not occupied by snake or forbidden."""
         snake_set = set(snake)
-        while True:
+        head = snake[0]
+        max_attempts = 100
+
+        # Try a bounded number of random placements first
+        for _ in range(max_attempts):
             r, c = random.randint(0, 7), random.randint(0, 7)
             if (r, c) not in snake_set and (r, c) not in DOT_FORBIDDEN:
                 # Prefer positions far from snake head
-                head = snake[0]
                 dist = abs(r - head[0]) + abs(c - head[1])
                 if dist >= 3 or random.random() > 0.5:
                     return (r, c)
 
-    def _choose_snake_direction(
-        self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int],
-        snake_body: list[tuple[int, int]]
-    ) -> tuple[int, int]:
+        # Fallback: deterministically choose a valid cell, preferring farthest from head
+        candidates: list[tuple[int, int]] = []
+        for r in range(8):
+            for c in range(8):
+                if (r, c) not in snake_set and (r, c) not in DOT_FORBIDDEN:
+                    candidates.append((r, c))
+
+        if candidates:
+            # Choose the candidate farthest from the snake head (maximizing Manhattan distance)
+            return max(
+                candidates,
+                key=lambda pos: abs(pos[0] - head[0]) + abs(pos[1] - head[1]),
+            )
+
+        # As an absolute last resort, return the head position (should be effectively unreachable)
+        return head
+
+    def _choose_snake_direction(self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int], snake_body: list[tuple[int, int]]) -> tuple[int, int]:
         """Choose snake direction toward dot (square geometry, no wrapping)."""
         hr, hc = head
         dr, dc = dot
@@ -561,37 +640,6 @@ class LaunchpadLights:
         if len(scored) > 1 and scored[0][0] == scored[1][0] and random.random() > 0.5:
             return scored[1][1]
         return scored[0][1]
-
-    def _figure8_wrap(self, r: int, c: int) -> tuple[int, int]:
-        """Wrap coordinates on figure-8 topology.
-
-        Twisted figure-8: top↔left, bottom↔right (preserves corners).
-        - (0,0) TL → (0,0) TL (stays)
-        - (0,7) TR → (7,0) BL (swaps)
-        - (7,7) BR → (7,7) BR (stays)
-        - (7,0) BL → (0,7) TR (swaps)
-        """
-        # Clamp for edge position
-        c_clamped = max(0, min(7, c))
-        r_clamped = max(0, min(7, r))
-
-        # Handle row overflow/underflow first
-        if r < 0:
-            # Off top → left edge, column becomes row
-            return (c_clamped, 0)
-        elif r > 7:
-            # Off bottom → right edge, column becomes row
-            return (c_clamped, 7)
-
-        # Handle column overflow/underflow
-        if c < 0:
-            # Off left → top edge, row becomes column
-            return (0, r_clamped)
-        elif c > 7:
-            # Off right → bottom edge, row becomes column
-            return (7, r_clamped)
-
-        return (r, c)
 
     def _move_dot_away(self, dot: tuple[int, int], snake_head: tuple[int, int]) -> tuple[int, int]:
         """Move dot away from snake head (bounded square, no wrapping)."""
@@ -709,9 +757,7 @@ class LaunchpadLights:
         self._log("launchpad_lights", status="stopped")
 
 
-def start_cat_lights(
-    logger: JSONLLogger | None = None, pattern: str = "hunt"
-) -> LaunchpadLights | None:
+def start_cat_lights(logger: JSONLLogger | None = None, pattern: str = "hunt") -> LaunchpadLights | None:
     """Start cat-enticing light pattern on Launchpad.
 
     Convenience function that creates a LaunchpadLights instance,

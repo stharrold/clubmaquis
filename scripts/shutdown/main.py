@@ -30,16 +30,28 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.clubmaquis.session_logger import ActionStatus, ActionType, SessionLogger  # noqa: E402
 
 # Base directory for all Club Maquis sessions (Google Drive)
-# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise default to GDrive
-_DEFAULT_DATA_DIR = (
-    Path.home()
-    / "Library"
-    / "CloudStorage"
-    / "GoogleDrive-samuel.harrold@gmail.com"
-    / "My Drive"
-    / "My_Drive"
-    / "ClubMaquis"
-)
+# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise discover GDrive path
+
+
+def _discover_default_data_dir() -> Path:
+    """Discover a reasonable default data directory without hardcoding user details.
+
+    Preference order:
+    1. First Google Drive directory under ~/Library/CloudStorage matching 'GoogleDrive-*'
+       with the existing 'My Drive/My_Drive/ClubMaquis' structure.
+    2. A local 'ClubMaquis' directory under the user's home directory.
+    """
+    cloud_storage_root = Path.home() / "Library" / "CloudStorage"
+    if cloud_storage_root.is_dir():
+        for entry in sorted(cloud_storage_root.iterdir()):
+            if entry.is_dir() and entry.name.startswith("GoogleDrive-"):
+                return entry / "My Drive" / "My_Drive" / "ClubMaquis"
+
+    # Fallback to a neutral, local directory if no Google Drive directory is found
+    return Path.home() / "ClubMaquis"
+
+
+_DEFAULT_DATA_DIR = _discover_default_data_dir()
 BASE_DATA_DIR = Path(os.environ.get("CLUBMAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
 
 # Pattern to match session ID format
@@ -128,8 +140,7 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
         except PermissionError:
             return False, None
         finally:
-            if pid_file.exists():
-                pid_file.unlink()
+            pid_file.unlink(missing_ok=True)
 
     # Also search for process by command pattern (handles Google Drive sync delay)
     try:

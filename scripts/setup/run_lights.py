@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: Apache-2.0
-# Copyright (c) 2025 Samuel Harrold
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Club Maquis
 """Standalone Launchpad lights runner for background execution.
 
 This script runs the Launchpad light pattern continuously until killed.
@@ -13,10 +13,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import random
 import signal
 import sys
 
-from scripts.setup.launchpad_lights import LaunchpadLights
+from scripts.setup.launchpad_lights import PATTERN_DURATION, LaunchpadLights
 
 
 def main() -> int:
@@ -48,40 +49,36 @@ def main() -> int:
     print(f"Connected! {args.pattern.capitalize()} pattern running...")
 
     # Start the pattern (this blocks in the current thread)
-    lights._running = True
-    lights._enter_programmer_mode()
-    lights._clear_all_leds()
+    lights.running = True
+    lights.enter_programmer_mode()
+    lights.clear_all_leds()
 
     try:
         if args.pattern == "random":
-            while lights._running:
-                import random
-
-                from scripts.setup.launchpad_lights import PATTERN_DURATION
-
+            while lights.running:
                 patterns = [
-                    lights._pattern_snake,
-                    lights._pattern_sparkle,
-                    lights._pattern_rain,
-                    lights._pattern_spiral,
-                    lights._pattern_wave,
-                    lights._pattern_diagonal,
-                    lights._pattern_expand,
-                    lights._pattern_hunt,
+                    lights.pattern_snake,
+                    lights.pattern_sparkle,
+                    lights.pattern_rain,
+                    lights.pattern_spiral,
+                    lights.pattern_wave,
+                    lights.pattern_diagonal,
+                    lights.pattern_expand,
+                    lights.pattern_hunt,
                 ]
                 pattern = random.choice(patterns)
                 pattern(PATTERN_DURATION)
-                lights._clear_all_leds()
+                lights.clear_all_leds()
         else:
             # Hunt pattern runs continuously
-            while lights._running:
-                lights._pattern_hunt(60.0)
-                lights._clear_all_leds()
+            while lights.running:
+                lights.pattern_hunt(60.0)
+                lights.clear_all_leds()
     except KeyboardInterrupt:
-        pass
+        pass  # User requested shutdown via Ctrl+C; cleanup handled in finally block
     finally:
-        lights._clear_all_leds()
-        lights._exit_programmer_mode()
+        lights.clear_all_leds()
+        lights.exit_programmer_mode()
         lights.disconnect()
 
     return 0

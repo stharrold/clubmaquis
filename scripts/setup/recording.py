@@ -25,17 +25,29 @@ from scripts.common.logger import JSONLLogger
 from scripts.setup.launchers import check_launchpad, launch_chrome_to_url, launch_quicktime
 
 # Base directory for all Club Maquis session data (Google Drive)
-# Can be overridden via CLUB_MAQUIS_DATA_DIR environment variable
-_DEFAULT_DATA_DIR = (
-    Path.home()
-    / "Library"
-    / "CloudStorage"
-    / "GoogleDrive-samuel.harrold@gmail.com"
-    / "My Drive"
-    / "My_Drive"
-    / "ClubMaquis"
-)
-BASE_DATA_DIR = Path(os.environ.get("CLUB_MAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
+# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise discover GDrive path
+
+
+def _discover_default_data_dir() -> Path:
+    """Discover a reasonable default data directory without hardcoding user details.
+
+    Preference order:
+    1. First Google Drive directory under ~/Library/CloudStorage matching 'GoogleDrive-*'
+       with the existing 'My Drive/My_Drive/ClubMaquis' structure.
+    2. A local 'ClubMaquis' directory under the user's home directory.
+    """
+    cloud_storage_root = Path.home() / "Library" / "CloudStorage"
+    if cloud_storage_root.is_dir():
+        for entry in sorted(cloud_storage_root.iterdir()):
+            if entry.is_dir() and entry.name.startswith("GoogleDrive-"):
+                return entry / "My Drive" / "My_Drive" / "ClubMaquis"
+
+    # Fallback to a neutral, local directory if no Google Drive directory is found
+    return Path.home() / "ClubMaquis"
+
+
+_DEFAULT_DATA_DIR = _discover_default_data_dir()
+BASE_DATA_DIR = Path(os.environ.get("CLUBMAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
 
 # Default cat TV video URL
 DEFAULT_CAT_TV_URL = "https://www.youtube.com/watch?v=2WHuRziGaFg"
