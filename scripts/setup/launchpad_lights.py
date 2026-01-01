@@ -538,10 +538,11 @@ class LaunchpadLights:
                 # Check if caught dot
                 if snake[0] == dot:
                     dot = self._spawn_dot_away_from(snake)
-                    # Ensure new color is different from current
-                    old_color_idx = dot_color_idx
-                    while dot_color_idx == old_color_idx:
-                        dot_color_idx = random.randint(0, len(COOL_COLORS) - 1)
+                    # Ensure new color is different from current (if multiple colors available)
+                    if len(COOL_COLORS) > 1:
+                        old_color_idx = dot_color_idx
+                        while dot_color_idx == old_color_idx:
+                            dot_color_idx = random.randint(0, len(COOL_COLORS) - 1)
 
             # Move dot (half as often)
             if now - last_dot_move >= dot_speed:
@@ -738,6 +739,12 @@ class LaunchpadLights:
         Returns:
             True if started successfully, False otherwise.
         """
+        # Validate pattern input
+        valid_patterns = ("hunt", "random")
+        if pattern not in valid_patterns:
+            self._log("launchpad_lights", status="warning", error=f"Unknown pattern '{pattern}', using 'hunt'")
+            pattern = "hunt"
+
         if not self._outport:
             if not self.connect():
                 return False
@@ -761,7 +768,8 @@ class LaunchpadLights:
 
         self._running = False
         if self._thread:
-            self._thread.join(timeout=2.0)
+            # Timeout longer than max pattern duration (60s hunt cycle)
+            self._thread.join(timeout=65.0)
             self._thread = None
         self._log("launchpad_lights", status="stopped")
 

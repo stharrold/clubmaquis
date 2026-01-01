@@ -21,6 +21,7 @@ import os
 import re
 import signal
 import sys
+import time
 from pathlib import Path
 
 # Add project root to path for imports
@@ -135,6 +136,8 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
             pid = int(pid_file.read_text().strip())
             os.kill(pid, signal.SIGTERM)
             stopped_pid = pid
+            # Give process time to exit before pgrep fallback
+            time.sleep(0.5)
         except (ValueError, ProcessLookupError):
             pass  # PID invalid or process already gone
         except PermissionError:
