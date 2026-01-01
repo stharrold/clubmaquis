@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Application launchers for Club Maquis recording sessions."""
 
 from __future__ import annotations

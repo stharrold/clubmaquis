@@ -14,7 +14,7 @@ from __future__ import annotations
 import random
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 try:
     import mido
@@ -22,6 +22,8 @@ except ImportError:
     mido = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
+    from mido.ports import BaseOutput
+
     from scripts.common.logger import JSONLLogger
 
 # Launchpad Mini MK3 MIDI port name pattern
@@ -135,7 +137,7 @@ class LaunchpadLights:
             logger: Optional logger for recording actions.
         """
         self.logger = logger
-        self._outport: Any = None  # mido.ports.BaseOutput when connected
+        self._outport: BaseOutput | None = None
         self._running = False
         self._thread: threading.Thread | None = None
 
