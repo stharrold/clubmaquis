@@ -112,22 +112,47 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
     Returns:
         Tuple of (success, pid) - pid is None if no PID file found.
     """
-    pid_file = session_dir / "lights.pid"
-    if not pid_file.exists():
-        return True, None
+    import subprocess
 
+    pid_file = session_dir / "lights.pid"
+    stopped_pid = None
+
+    # Try PID file first
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            stopped_pid = pid
+        except (ValueError, ProcessLookupError):
+            pass  # PID invalid or process already gone
+        except PermissionError:
+            return False, None
+        finally:
+            if pid_file.exists():
+                pid_file.unlink()
+
+    # Also search for process by command pattern (handles Google Drive sync delay)
     try:
-        pid = int(pid_file.read_text().strip())
-        os.kill(pid, signal.SIGTERM)
-        pid_file.unlink()  # Remove PID file
-        return True, pid
-    except (ValueError, ProcessLookupError):
-        # PID invalid or process already gone
-        if pid_file.exists():
-            pid_file.unlink()
-        return True, None
-    except PermissionError:
-        return False, None
+        result = subprocess.run(
+            ["pgrep", "-f", "scripts.setup.run_lights"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    try:
+                        pid = int(line)
+                        os.kill(pid, signal.SIGTERM)
+                        if stopped_pid is None:
+                            stopped_pid = pid
+                    except (ValueError, ProcessLookupError, PermissionError):
+                        pass
+    except (subprocess.SubprocessError, OSError):
+        pass  # pgrep failed, continue with whatever we have
+
+    return True, stopped_pid
 
 
 def display_save_prompts(session_dir: Path, session_id: str) -> None:
@@ -210,7 +235,7 @@ def run_shutdown(session_id: str) -> int:
     if lights_pid:
         print(f"  [OK] Lights stopped (PID: {lights_pid})")
         logger.log(
-            ActionType.APP_CLOSE,
+            ActionType.LAUNCHPAD_LIGHTS,
             ActionStatus.SUCCESS,
             "Stopped Launchpad lights",
             details={"pid": lights_pid},
@@ -220,7 +245,7 @@ def run_shutdown(session_id: str) -> int:
     else:
         print("  [!!] Failed to stop lights process")
         logger.log(
-            ActionType.APP_CLOSE,
+            ActionType.LAUNCHPAD_LIGHTS,
             ActionStatus.FAILED,
             "Failed to stop Launchpad lights",
         )

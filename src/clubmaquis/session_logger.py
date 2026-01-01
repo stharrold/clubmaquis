@@ -25,6 +25,7 @@ class ActionType(str, Enum):
 
     SESSION_START = "session_start"
     SESSION_END = "session_end"
+    LAUNCHPAD_LIGHTS = "launchpad_lights"
     QUICKTIME_STOP = "quicktime_stop"
     QUICKTIME_SAVE = "quicktime_save"
     CHROME_CLOSE = "chrome_close"
