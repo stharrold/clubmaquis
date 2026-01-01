@@ -73,8 +73,9 @@ sessions/[date]/
 ### Recording Setup
 
 - **Input sources**: Webcam (QuickTime), iPhone
+- **MIDI controller**: Novation Launchpad Mini MK3
 - **Sync method**: Clap at session start creates audio transient for alignment
-- **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV)
+- **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV) + Launchpad light patterns
 - **Session data**: `~/Library/CloudStorage/GoogleDrive-samuel.harrold@gmail.com/My Drive/My_Drive/ClubMaquis/YYYYMMDDTHHMMSSZ/`
 - **Session log**: `YYYYMMDDTHHMMSSZ_log.jsonl` with self-documenting entries and absolute file paths
 - **File naming**: User names files as `YYYYMMDD_<type>.mov` (e.g., `20250101_webcam.mov`)
@@ -88,8 +89,9 @@ scripts/
 ├── common/
 │   └── logger.py             # Self-documenting JSONL logger (shared)
 ├── setup/
-│   ├── recording.py          # Create session dir, launch QuickTime + Chrome
-│   └── launchers.py          # App launching utilities
+│   ├── recording.py          # Create session dir, launch apps, start Launchpad lights
+│   ├── launchers.py          # App launching utilities (QuickTime, Chrome)
+│   └── launchpad_lights.py   # Cat-enticing LED patterns for Launchpad Mini MK3
 ├── shutdown/
 │   ├── main.py               # CLI: prompts user to save files, logs session
 │   ├── quicktime.py          # AppleScript control for QuickTime
@@ -97,11 +99,21 @@ scripts/
 └── process/                  # (future) Run pipeline
 ```
 
+### Launchpad Light Patterns
+
+The setup script automatically runs cat-enticing light patterns on the Launchpad Mini MK3 to attract Nerys:
+- **7 patterns** cycle randomly every 8 seconds: snake, sparkle, rain, spiral, wave, diagonal, expand
+- Uses MIDI port (not DAW port) for LED control
+- Based on Launchpad Mini MK3 Programmer's Reference Manual (`docs/`)
+- Patterns use warm colors (red, orange, yellow) that cats notice
+
 **Setup script workflow**:
 1. Creates session directory in Google Drive
-2. Launches QuickTime Player
-3. Opens Chrome to cat TV URL
-4. Displays manual steps for recording
+2. Detects Launchpad and starts light patterns (if connected)
+3. Launches QuickTime Player
+4. Opens Chrome to cat TV URL
+5. Displays manual steps for recording
+6. Lights run until user presses Enter
 
 **Shutdown script workflow**:
 1. Prompts user to save QuickTime recordings to session directory
