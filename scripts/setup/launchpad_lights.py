@@ -82,6 +82,22 @@ ALL_COLORS = [
     84,  # Bright red
 ]
 
+# Cool colors for the dot (prey)
+COOL_COLORS = [
+    37,  # Cyan
+    41,  # Light blue
+    45,  # Blue
+    49,  # Purple
+    79,  # Bright cyan
+    78,  # Bright blue
+]
+
+# Snake movement directions (up, down, left, right only)
+SNAKE_DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+# Dot movement directions (8 directions including diagonals)
+DOT_DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+
 
 class LaunchpadLights:
     """Controls Launchpad Mini MK3 LED patterns for cat attraction.
@@ -398,6 +414,157 @@ class LaunchpadLights:
                 time.sleep(0.15)
             color_index = (color_index + 1) % len(ALL_COLORS)
 
+    def _pattern_hunt(self, duration: float) -> None:
+        """Snake hunts dot pattern - Nerys's favorite!
+
+        A warm-colored snake chases a cool-colored dot.
+        - Snake moves up/down/left/right only
+        - Dot moves in 8 directions (including diagonals)
+        - Dot moves half as fast, away from snake
+        - Board wraps around (torus topology)
+        - When snake catches dot, new dot spawns
+        - Snake length is fixed (doesn't grow)
+        """
+        end_time = time.time() + duration
+        snake_length = 5
+        snake_speed = 0.1  # seconds per move
+        dot_speed = 0.2    # half as fast
+
+        # Initialize snake in center, moving right
+        snake: list[tuple[int, int]] = [(3, 3 - i) for i in range(snake_length)]
+        snake_dir = (0, 1)  # moving right
+
+        # Spawn dot away from snake
+        dot = self._spawn_dot_away_from(snake)
+        dot_color_idx = 0
+
+        last_snake_move = time.time()
+        last_dot_move = time.time()
+
+        while self._running and time.time() < end_time:
+            now = time.time()
+
+            # Move snake
+            if now - last_snake_move >= snake_speed:
+                # Choose direction toward dot
+                snake_dir = self._choose_snake_direction(snake[0], dot, snake_dir)
+                # Move head (with wrapping)
+                new_head = ((snake[0][0] + snake_dir[0]) % 8, (snake[0][1] + snake_dir[1]) % 8)
+                snake = [new_head] + snake[:-1]  # Fixed length
+                last_snake_move = now
+
+                # Check if caught dot
+                if snake[0] == dot:
+                    dot = self._spawn_dot_away_from(snake)
+                    dot_color_idx = (dot_color_idx + 1) % len(COOL_COLORS)
+
+            # Move dot (half as often)
+            if now - last_dot_move >= dot_speed:
+                dot = self._move_dot_away(dot, snake[0])
+                last_dot_move = now
+
+            # Draw
+            self._clear_all_leds()
+
+            # Draw snake with warm color gradient
+            for i, (r, c) in enumerate(snake):
+                color = WARM_COLORS[i % len(WARM_COLORS)]
+                pulse = i == 0  # Head pulses
+                self._set_led(PAD_GRID[r][c], color, pulse)
+
+            # Draw dot with cool color (pulsing)
+            dr, dc = dot
+            self._set_led(PAD_GRID[dr][dc], COOL_COLORS[dot_color_idx], pulse=True)
+
+            time.sleep(0.03)
+
+    def _spawn_dot_away_from(self, snake: list[tuple[int, int]]) -> tuple[int, int]:
+        """Spawn dot at random position not occupied by snake."""
+        snake_set = set(snake)
+        while True:
+            r, c = random.randint(0, 7), random.randint(0, 7)
+            if (r, c) not in snake_set:
+                # Prefer positions far from snake head
+                head = snake[0]
+                dist = abs(r - head[0]) + abs(c - head[1])
+                if dist >= 3 or random.random() > 0.5:
+                    return (r, c)
+
+    def _choose_snake_direction(
+        self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int]
+    ) -> tuple[int, int]:
+        """Choose snake direction toward dot (only 4 directions)."""
+        hr, hc = head
+        dr, dc = dot
+
+        # Calculate wrapped distances
+        row_diff = (dr - hr + 4) % 8 - 4  # -4 to +3
+        col_diff = (dc - hc + 4) % 8 - 4
+
+        # Prefer direction that closes more distance
+        candidates = []
+        if row_diff < 0:
+            candidates.append((-1, 0))  # up
+        elif row_diff > 0:
+            candidates.append((1, 0))   # down
+        if col_diff < 0:
+            candidates.append((0, -1))  # left
+        elif col_diff > 0:
+            candidates.append((0, 1))   # right
+
+        if candidates:
+            # Slight randomness to make it interesting
+            if random.random() > 0.8 and len(candidates) > 1:
+                return random.choice(candidates)
+            # Prefer direction with larger distance
+            if abs(row_diff) > abs(col_diff):
+                return (-1, 0) if row_diff < 0 else (1, 0)
+            else:
+                return (0, -1) if col_diff < 0 else (0, 1)
+
+        return current_dir  # Keep current if at target
+
+    def _move_dot_away(self, dot: tuple[int, int], snake_head: tuple[int, int]) -> tuple[int, int]:
+        """Move dot away from snake head (8 directions, with wrapping)."""
+        dr, dc = dot
+        hr, hc = snake_head
+
+        # Calculate direction away from snake (wrapped)
+        row_diff = (dr - hr + 4) % 8 - 4
+        col_diff = (dc - hc + 4) % 8 - 4
+
+        # Find directions that move away from snake
+        away_dirs = []
+        for d in DOT_DIRS:
+            # Would this direction increase distance?
+            new_row_diff = row_diff + d[0]
+            new_col_diff = col_diff + d[1]
+            if abs(new_row_diff) + abs(new_col_diff) >= abs(row_diff) + abs(col_diff):
+                away_dirs.append(d)
+
+        # If no away directions (cornered), pick random
+        if not away_dirs:
+            away_dirs = DOT_DIRS
+
+        # Pick random away direction
+        direction = random.choice(away_dirs)
+        new_r = (dr + direction[0]) % 8
+        new_c = (dc + direction[1]) % 8
+        return (new_r, new_c)
+
+    def _run_hunt_loop(self) -> None:
+        """Run the hunt pattern continuously (default mode)."""
+        self._enter_programmer_mode()
+        self._clear_all_leds()
+
+        while self._running:
+            # Run hunt pattern in long segments
+            self._pattern_hunt(60.0)  # 1 minute per cycle
+            self._clear_all_leds()
+
+        self._clear_all_leds()
+        self._exit_programmer_mode()
+
     def _run_random_patterns(self) -> None:
         """Run random patterns, cycling every few seconds."""
         self._enter_programmer_mode()
@@ -411,6 +578,7 @@ class LaunchpadLights:
             self._pattern_wave,
             self._pattern_diagonal,
             self._pattern_expand,
+            self._pattern_hunt,
         ]
 
         while self._running:
@@ -421,8 +589,11 @@ class LaunchpadLights:
         self._clear_all_leds()
         self._exit_programmer_mode()
 
-    def start(self) -> bool:
+    def start(self, pattern: str = "hunt") -> bool:
         """Start the light pattern animation.
+
+        Args:
+            pattern: Pattern mode - "hunt" (default) or "random".
 
         Returns:
             True if started successfully, False otherwise.
@@ -435,9 +606,12 @@ class LaunchpadLights:
             return True
 
         self._running = True
-        self._thread = threading.Thread(target=self._run_random_patterns, daemon=True)
+        if pattern == "random":
+            self._thread = threading.Thread(target=self._run_random_patterns, daemon=True)
+        else:
+            self._thread = threading.Thread(target=self._run_hunt_loop, daemon=True)
         self._thread.start()
-        self._log("launchpad_lights", status="started", pattern="random")
+        self._log("launchpad_lights", status="started", pattern=pattern)
         return True
 
     def stop(self) -> None:
@@ -452,7 +626,9 @@ class LaunchpadLights:
         self._log("launchpad_lights", status="stopped")
 
 
-def start_cat_lights(logger: JSONLLogger | None = None) -> LaunchpadLights | None:
+def start_cat_lights(
+    logger: JSONLLogger | None = None, pattern: str = "hunt"
+) -> LaunchpadLights | None:
     """Start cat-enticing light pattern on Launchpad.
 
     Convenience function that creates a LaunchpadLights instance,
@@ -460,12 +636,13 @@ def start_cat_lights(logger: JSONLLogger | None = None) -> LaunchpadLights | Non
 
     Args:
         logger: Optional logger for recording actions.
+        pattern: Pattern mode - "hunt" (default) or "random".
 
     Returns:
         LaunchpadLights instance if successful, None otherwise.
     """
     lights = LaunchpadLights(logger)
-    if lights.start():
+    if lights.start(pattern=pattern):
         return lights
     return None
 
