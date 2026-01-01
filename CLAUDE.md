@@ -16,6 +16,7 @@ brew install ffmpeg fluidsynth             # System dependencies (macOS)
 # Linting and formatting
 uv run ruff check .                        # Lint
 uv run ruff check --fix .                  # Auto-fix linting
+uv run ruff format .                       # Format code
 
 # Pre-commit hooks
 uv run pre-commit install                  # Install hooks (one-time)
@@ -118,7 +119,9 @@ The setup script runs cat-enticing light patterns on the Launchpad Mini MK3 to a
 **Technical details:**
 - Uses MIDI port (not DAW port) for LED control
 - Runs as background process (PID saved to `lights.pid`)
-- Based on Launchpad Mini MK3 Programmer's Reference Manual (`docs/`)
+- Color palette indices from Launchpad Mini MK3 Programmer's Reference Manual (page 11):
+  - Bright colors at indices 5 (red), 9 (orange), 13 (yellow), 17 (green), 21-37 (cyan-green), 41-45 (blue), 49 (purple), 53 (magenta)
+- Reference docs in `docs/Launchpad Mini - Programmers Reference Manual.pdf`
 
 **Setup script workflow**:
 1. Creates session directory in Google Drive
