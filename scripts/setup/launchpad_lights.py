@@ -97,7 +97,7 @@ class LaunchpadLights:
             return False
 
         try:
-            # Find Launchpad MIDI output port
+            # Find Launchpad MIDI output port (use MIDI port, not DAW port)
             output_names = mido.get_output_names()
             launchpad_port = None
             for name in output_names:
