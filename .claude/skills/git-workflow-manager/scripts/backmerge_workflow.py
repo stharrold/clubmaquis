@@ -164,6 +164,12 @@ def step_pr_develop(version: str | None = None) -> bool:
         return_to_editable_branch()
         return False
 
+    # Validate commit count output
+    if not commits_behind.isdigit():
+        safe_print(f"[FAIL] Invalid commit count: {commits_behind}")
+        return_to_editable_branch()
+        return False
+
     if commits_behind == "0":
         safe_print("[WARN]  develop is already up to date with main")
         return_to_editable_branch()
