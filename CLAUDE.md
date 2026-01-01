@@ -11,7 +11,10 @@ Club Maquis is a cat DJ streaming channel where Nerys (a cat) makes music by ste
 ```bash
 # Install dependencies
 uv sync                                    # Install all dependencies
-brew install ffmpeg fluidsynth             # System dependencies (macOS)
+brew install ffmpeg fluidsynth gphotos-uploader-cli  # System dependencies (macOS)
+
+# Session management scripts (in scripts/)
+uv run python scripts/shutdown/main.py 20251231T120000Z  # Shutdown recording session
 
 # Recording session automation
 uv run python -m scripts.setup.recording   # Set up recording session (creates dir, launches apps)
@@ -66,6 +69,8 @@ sessions/[date]/
 
 ### Automation Scripts
 
+Located in `scripts/` directory, these automate recording session lifecycle:
+
 ```
 scripts/
 ├── common/
@@ -73,9 +78,22 @@ scripts/
 ├── setup/
 │   ├── recording.py          # Launch apps, create session dir
 │   └── launchers.py          # App launching utilities
-├── shutdown/                 # (future) Stop recordings, save files
+├── shutdown/                 # Graceful session shutdown
+│   ├── main.py               # CLI: stops recordings, saves files, uploads to Google Photos
+│   ├── quicktime.py          # AppleScript control for QuickTime
+│   ├── ableton.py            # Ableton file management + close
+│   ├── gphotos.py            # Google Photos upload via gphotos-uploader-cli
+│   └── utils.py              # Shared AppleScript utilities
 └── process/                  # (future) Run pipeline
 ```
+
+**Shutdown script workflow**:
+1. Stops QuickTime recordings → waits for files to stabilize
+2. Moves recordings from Desktop to session directory
+3. Copies Ableton project files with naming: `YYYYMMDDTHHMMSSZ_ableton_<type>.<ext>`
+4. Closes Ableton Live
+5. Uploads to Google Photos album `ClubMaquis_<session_id>`
+6. Logs all actions to self-documenting `log.jsonl`
 
 ## Key Technical Concepts
 
