@@ -35,8 +35,12 @@ def main() -> int:
 
     def shutdown_handler(signum, frame):
         """Handle shutdown signals gracefully."""
-        lights.disconnect()
-        sys.exit(0)
+        try:
+            lights.disconnect()
+        except Exception:
+            pass  # Ignore cleanup errors; process is exiting anyway
+        finally:
+            sys.exit(0)
 
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGTERM, shutdown_handler)
@@ -70,7 +74,8 @@ def main() -> int:
                 pattern(PATTERN_DURATION)
                 lights.clear_all_leds()
         else:
-            # Hunt pattern runs continuously
+            # Hunt pattern runs continuously in 60-second cycles
+            # (longer than random patterns to give cat time to engage with chase)
             while lights.running:
                 lights.pattern_hunt(60.0)
                 lights.clear_all_leds()

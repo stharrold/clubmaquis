@@ -21,6 +21,7 @@ import os
 import re
 import signal
 import sys
+import time
 from pathlib import Path
 
 # Add project root to path for imports
@@ -115,6 +116,28 @@ def find_session_files(session_dir: Path) -> list[Path]:
     return sorted([f.resolve() for f in session_dir.iterdir() if f.is_file()])
 
 
+def _wait_for_process_exit(pid: int, timeout: float = 65.0) -> bool:
+    """Wait for a process to exit.
+
+    Args:
+        pid: Process ID to wait for.
+        timeout: Maximum seconds to wait (default 65s, longer than 60s hunt cycle).
+
+    Returns:
+        True if process exited, False if timeout reached.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            os.kill(pid, 0)  # Check if process is still alive (doesn't actually kill)
+            time.sleep(0.5)
+        except ProcessLookupError:
+            return True  # Process exited
+        except PermissionError:
+            return True  # Can't check, assume exited
+    return False  # Timeout
+
+
 def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
     """Stop the Launchpad lights background process.
 
@@ -128,6 +151,7 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
 
     pid_file = session_dir / "lights.pid"
     stopped_pid = None
+    pids_to_wait: list[int] = []
 
     # Try PID file first
     if pid_file.exists():
@@ -135,6 +159,7 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
             pid = int(pid_file.read_text().strip())
             os.kill(pid, signal.SIGTERM)
             stopped_pid = pid
+            pids_to_wait.append(pid)
         except (ValueError, ProcessLookupError):
             pass  # PID invalid or process already gone
         except PermissionError:
@@ -158,10 +183,16 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
                         os.kill(pid, signal.SIGTERM)
                         if stopped_pid is None:
                             stopped_pid = pid
+                        if pid not in pids_to_wait:
+                            pids_to_wait.append(pid)
                     except (ValueError, ProcessLookupError, PermissionError):
-                        pass
+                        pass  # Ignore individual kill failures; continue stopping others
     except (subprocess.SubprocessError, OSError):
         pass  # pgrep failed, continue with whatever we have
+
+    # Wait for all signaled processes to actually terminate
+    for pid in pids_to_wait:
+        _wait_for_process_exit(pid)
 
     return True, stopped_pid
 
@@ -241,7 +272,7 @@ def run_shutdown(session_id: str) -> int:
 
     # Stop Launchpad lights first
     print()
-    print("Stopping Launchpad lights...")
+    print("Stopping Launchpad lights (may take up to 60s if mid-pattern)...")
     lights_stopped, lights_pid = stop_launchpad_lights(session_dir)
     if lights_pid:
         print(f"  [OK] Lights stopped (PID: {lights_pid})")

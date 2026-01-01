@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Application launchers for Club Maquis recording sessions."""
 
 from __future__ import annotations
@@ -32,9 +32,9 @@ def check_launchpad(logger: JSONLLogger) -> bool:
                 logger.log("launchpad_check", status="connected", method="midi", port=name)
                 return True
     except ImportError:
-        pass  # mido not installed, fall back to USB check
-    except Exception:
-        pass  # MIDI check failed, fall back to USB check
+        logger.log("launchpad_check", status="fallback", reason="mido not installed")
+    except Exception as e:
+        logger.log("launchpad_check", status="fallback", reason="midi_error", error=str(e))
 
     # Fall back to USB device check
     try:

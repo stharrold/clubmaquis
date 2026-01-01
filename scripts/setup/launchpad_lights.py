@@ -22,6 +22,8 @@ except ImportError:
     mido = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
+    from mido.ports import BaseOutput
+
     from scripts.common.logger import JSONLLogger
 
 # Launchpad Mini MK3 MIDI port name pattern
@@ -135,7 +137,7 @@ class LaunchpadLights:
             logger: Optional logger for recording actions.
         """
         self.logger = logger
-        self._outport: mido.ports.BaseOutput | None = None
+        self._outport: BaseOutput | None = None
         self._running = False
         self._thread: threading.Thread | None = None
 
@@ -538,10 +540,11 @@ class LaunchpadLights:
                 # Check if caught dot
                 if snake[0] == dot:
                     dot = self._spawn_dot_away_from(snake)
-                    # Ensure new color is different from current
-                    old_color_idx = dot_color_idx
-                    while dot_color_idx == old_color_idx:
-                        dot_color_idx = random.randint(0, len(COOL_COLORS) - 1)
+                    # Ensure new color is different from current (if multiple colors available)
+                    if len(COOL_COLORS) > 1:
+                        old_color_idx = dot_color_idx
+                        while dot_color_idx == old_color_idx:
+                            dot_color_idx = random.randint(0, len(COOL_COLORS) - 1)
 
             # Move dot (half as often)
             if now - last_dot_move >= dot_speed:
@@ -592,8 +595,17 @@ class LaunchpadLights:
                 key=lambda pos: abs(pos[0] - head[0]) + abs(pos[1] - head[1]),
             )
 
-        # As an absolute last resort, return the head position (should be effectively unreachable)
-        return head
+        # Last resort: try forbidden corners (better than head which causes instant recapture)
+        forbidden_available = [pos for pos in DOT_FORBIDDEN if pos not in snake_set]
+        if forbidden_available:
+            return random.choice(forbidden_available)
+
+        # Absolute last resort: random grid position not in snake (should be unreachable)
+        all_positions = [(r, c) for r in range(8) for c in range(8) if (r, c) not in snake_set]
+        if all_positions:
+            return random.choice(all_positions)
+
+        return head  # Grid completely full (theoretically impossible with 5-segment snake)
 
     def _choose_snake_direction(self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int], snake_body: list[tuple[int, int]]) -> tuple[int, int]:
         """Choose snake direction toward dot (square geometry, no wrapping)."""
@@ -729,6 +741,12 @@ class LaunchpadLights:
         Returns:
             True if started successfully, False otherwise.
         """
+        # Validate pattern input
+        valid_patterns = ("hunt", "random")
+        if pattern not in valid_patterns:
+            self._log("launchpad_lights", status="warning", error=f"Unknown pattern '{pattern}', using 'hunt'")
+            pattern = "hunt"
+
         if not self._outport:
             if not self.connect():
                 return False
@@ -752,7 +770,8 @@ class LaunchpadLights:
 
         self._running = False
         if self._thread:
-            self._thread.join(timeout=2.0)
+            # Timeout longer than max pattern duration (60s hunt cycle)
+            self._thread.join(timeout=65.0)
             self._thread = None
         self._log("launchpad_lights", status="stopped")
 
