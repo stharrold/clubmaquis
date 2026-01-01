@@ -13,6 +13,10 @@ Club Maquis is a cat DJ streaming channel where Nerys (a cat) makes music by ste
 uv sync                                    # Install all dependencies
 brew install ffmpeg fluidsynth             # System dependencies (macOS)
 
+# Recording session automation
+uv run python -m scripts.setup.recording   # Set up recording session (creates dir, launches apps)
+uv run python -m scripts.setup.recording --cat-tv-url "https://..."  # Custom cat TV URL
+
 # Run full pipeline
 uv run python cat_dj_pipeline.py --session ./sessions/[date]/raw/ --output ./sessions/[date]/ --magenta-tools drumify,groove --simple
 
@@ -56,7 +60,22 @@ sessions/[date]/
 - **Input sources**: Webcam (QuickTime), iPhone, Screen Recording (Ableton), MIDI track
 - **Sync method**: Clap at session start creates audio transient for alignment
 - **DAW**: Ableton Live 12 Suite with Launchpad Mini MK3
-- **Cat lure**: Bird/fish videos via VLC
+- **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV)
+- **Session data**: `/Users/stharrold/Documents/Data/ClubMaquis/YYYYMMDDTHHMMSSZ/`
+- **Session log**: Each session has `log.jsonl` with timestamped actions
+
+### Automation Scripts
+
+```
+scripts/
+├── common/
+│   └── logger.py             # Self-documenting JSONL logger (shared)
+├── setup/
+│   ├── recording.py          # Launch apps, create session dir
+│   └── launchers.py          # App launching utilities
+├── shutdown/                 # (future) Stop recordings, save files
+└── process/                  # (future) Run pipeline
+```
 
 ## Key Technical Concepts
 
