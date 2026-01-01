@@ -13,6 +13,18 @@ Club Maquis is a cat DJ streaming channel where Nerys (a cat) makes music by ste
 uv sync                                    # Install all dependencies
 brew install ffmpeg fluidsynth gphotos-uploader-cli  # System dependencies (macOS)
 
+# Linting and formatting
+uv run ruff check .                        # Lint
+uv run ruff check --fix .                  # Auto-fix linting
+
+# Pre-commit hooks
+uv run pre-commit install                  # Install hooks (one-time)
+uv run pre-commit run --all-files          # Run manually
+
+# Testing (infrastructure ready, tests pending v0.2.0)
+uv run pytest                              # Run tests
+uv run pytest -v -k test_name              # Single test
+
 # Session management scripts (in scripts/)
 uv run python scripts/shutdown/main.py 20251231T120000Z  # Shutdown recording session
 
@@ -129,20 +141,6 @@ develop                        <- Integration branch
 contrib/stharrold              <- Personal contribution branch
   ^
 feature/<timestamp>_<slug>     <- Isolated feature (worktree)
-```
-
-### Common Commands
-
-```bash
-# Development
-uv sync                                    # Install dependencies
-uv run pytest                              # Run tests
-uv run ruff check .                        # Lint
-uv run ruff check --fix .                  # Auto-fix linting
-
-# Pre-commit hooks
-uv run pre-commit install                  # Install hooks (one-time)
-uv run pre-commit run --all-files          # Run manually
 ```
 
 ## Critical Guidelines
