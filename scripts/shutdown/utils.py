@@ -59,21 +59,28 @@ def is_app_running(process_name: str) -> bool:
         return False
 
 
-def quit_app(app_name: str, process_name: str | None = None) -> OperationResult:
+def quit_app(
+    app_name: str,
+    process_name: str | None = None,
+    wait_for_termination: bool = True,
+    termination_timeout: float = 10.0,
+) -> OperationResult:
     """Quit a macOS application via AppleScript.
 
-    This function sends a quit command to the target application but does not
-    wait for the application process to fully terminate. Callers that need to
-    ensure the application has actually exited should perform their own
-    follow-up check (for example, by calling :func:`is_app_running`).
+    By default, this function waits for the application to fully terminate
+    after sending the quit command. Set wait_for_termination=False to return
+    immediately after sending the quit command.
 
     Args:
         app_name: Application name for AppleScript (e.g., "QuickTime Player").
         process_name: Process name for is_running check (defaults to app_name).
+        wait_for_termination: If True, wait for app to terminate (default: True).
+        termination_timeout: Max seconds to wait for termination (default: 10s).
 
     Returns:
-        OperationResult indicating whether the quit command was sent
-        successfully, not whether the application has fully terminated.
+        OperationResult indicating success/failure. If wait_for_termination=True,
+        success means the app has fully terminated. Otherwise, success means
+        the quit command was sent successfully.
     """
     process_name = process_name or app_name
 
@@ -104,9 +111,30 @@ def quit_app(app_name: str, process_name: str | None = None) -> OperationResult:
                 details={"stderr": result.stderr.strip()},
             )
 
+        # Optionally wait for app to fully terminate
+        if wait_for_termination:
+            poll_interval = 0.5
+            elapsed = 0.0
+            while elapsed < termination_timeout:
+                if not is_app_running(process_name):
+                    return OperationResult(
+                        success=True,
+                        message=f"{app_name} quit and terminated successfully",
+                        details={"termination_time_seconds": elapsed},
+                    )
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+
+            # Timeout - app still running
+            return OperationResult(
+                success=False,
+                message=f"{app_name} quit command sent but app did not terminate within {termination_timeout}s",
+                details={"timeout_seconds": termination_timeout},
+            )
+
         return OperationResult(
             success=True,
-            message=f"{app_name} quit successfully",
+            message=f"{app_name} quit command sent",
         )
     except subprocess.SubprocessError as e:
         return OperationResult(

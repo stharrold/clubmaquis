@@ -52,7 +52,11 @@ QUICKTIME_PATTERNS = {
 }
 
 # Time to wait for QuickTime files to save (seconds)
+# Rationale: QuickTime may take 20-30s to save large recordings (1080p 60fps)
+# Timeout of 30s provides margin for slow disk writes without blocking too long
 QUICKTIME_SAVE_TIMEOUT = 30.0
+# Rationale: 2s stability window ensures file has stopped growing
+# Shorter windows may falsely detect stability during brief write pauses
 QUICKTIME_STABILITY_TIME = 2.0
 
 # Script version for logging
@@ -65,8 +69,29 @@ def validate_session_id(session_id: str) -> bool:
 
 
 def get_session_dir(session_id: str) -> Path:
-    """Get the session directory path."""
-    return BASE_DATA_DIR / session_id
+    """Get the session directory path.
+
+    Args:
+        session_id: Session timestamp in YYYYMMDDTHHMMSSZ format.
+
+    Returns:
+        Path to the session directory within BASE_DATA_DIR.
+
+    Raises:
+        ValueError: If the constructed path escapes BASE_DATA_DIR (path injection).
+    """
+    session_dir = (BASE_DATA_DIR / session_id).resolve()
+    base_resolved = BASE_DATA_DIR.resolve()
+    # Validate path stays within BASE_DATA_DIR (prevents path injection)
+    try:
+        # Python 3.9+: use is_relative_to for robust containment check
+        if not session_dir.is_relative_to(base_resolved):
+            raise ValueError(f"Invalid session directory: {session_dir}")
+    except AttributeError:
+        # Python < 3.9 fallback
+        if base_resolved not in session_dir.parents and session_dir != base_resolved:
+            raise ValueError(f"Invalid session directory: {session_dir}")
+    return session_dir
 
 
 def find_quicktime_files() -> dict[str, list[Path]]:
@@ -370,7 +395,6 @@ def run_shutdown(session_id: str) -> int:
         "Uploading session files to Google Photos",
         details={
             "session_dir": str(session_dir),
-            "account": "samuel.harrold@gmail.com",
             "upload_extensions": list(gphotos.UPLOAD_EXTENSIONS),
         },
     )
