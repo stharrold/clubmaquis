@@ -223,10 +223,7 @@ def wait_for_files_stable(
                 stable_since[file_path] = time.time()
 
         # Check if all found files are stable
-        stable_files = [
-            f for f in current_files
-            if f in stable_since and time.time() - stable_since[f] >= stability_seconds
-        ]
+        stable_files = [f for f in current_files if f in stable_since and time.time() - stable_since[f] >= stability_seconds]
 
         if stable_files:
             return stable_files

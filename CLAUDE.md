@@ -11,7 +11,20 @@ Club Maquis is a cat DJ streaming channel where Nerys (a cat) makes music by ste
 ```bash
 # Install dependencies
 uv sync                                    # Install all dependencies
-brew install ffmpeg fluidsynth gphotos-uploader-cli  # System dependencies (macOS)
+brew install ffmpeg fluidsynth             # System dependencies (macOS)
+
+# Linting and formatting
+uv run ruff check .                        # Lint
+uv run ruff check --fix .                  # Auto-fix linting
+uv run ruff format .                       # Format code
+
+# Pre-commit hooks
+uv run pre-commit install                  # Install hooks (one-time)
+uv run pre-commit run --all-files          # Run manually
+
+# Testing (infrastructure ready, tests pending v0.2.0)
+uv run pytest                              # Run tests
+uv run pytest -v -k test_name              # Single test
 
 # Session management scripts (in scripts/)
 uv run python scripts/shutdown/main.py 20251231T120000Z  # Shutdown recording session
@@ -60,40 +73,71 @@ sessions/[date]/
 
 ### Recording Setup
 
-- **Input sources**: Webcam (QuickTime), iPhone, Screen Recording (Ableton), MIDI track
+- **Input sources**: Webcam (QuickTime), iPhone
+- **MIDI controller**: Novation Launchpad Mini MK3
 - **Sync method**: Clap at session start creates audio transient for alignment
-- **DAW**: Ableton Live 12 Suite with Launchpad Mini MK3
-- **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV)
-- **Session data**: `/Users/stharrold/Documents/Data/ClubMaquis/YYYYMMDDTHHMMSSZ/`
-- **Session log**: Each session has `log.jsonl` with timestamped actions
+- **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV) + Launchpad light patterns
+- **Session data**: `~/Library/CloudStorage/GoogleDrive-samuel.harrold@gmail.com/My Drive/My_Drive/ClubMaquis/YYYYMMDDTHHMMSSZ/`
+- **Session log**: `YYYYMMDDTHHMMSSZ_log.jsonl` with self-documenting entries and absolute file paths
+- **File naming**: User names files as `YYYYMMDD_<type>.mov` (e.g., `20250101_webcam.mov`)
 
 ### Automation Scripts
 
-Located in `scripts/` directory, these automate recording session lifecycle:
+Located in `scripts/` directory, these manage recording session lifecycle:
 
 ```
 scripts/
 ├── common/
 │   └── logger.py             # Self-documenting JSONL logger (shared)
 ├── setup/
-│   ├── recording.py          # Launch apps, create session dir
-│   └── launchers.py          # App launching utilities
-├── shutdown/                 # Graceful session shutdown
-│   ├── main.py               # CLI: stops recordings, saves files, uploads to Google Photos
+│   ├── recording.py          # Create session dir, launch apps, start Launchpad lights
+│   ├── launchers.py          # App launching utilities (QuickTime, Chrome)
+│   ├── launchpad_lights.py   # Cat-enticing LED patterns for Launchpad Mini MK3
+│   └── run_lights.py         # Standalone lights runner (background process)
+├── shutdown/
+│   ├── main.py               # CLI: stops lights, prompts user to save files, logs session
 │   ├── quicktime.py          # AppleScript control for QuickTime
-│   ├── ableton.py            # Ableton file management + close
-│   ├── gphotos.py            # Google Photos upload via gphotos-uploader-cli
 │   └── utils.py              # Shared AppleScript utilities
 └── process/                  # (future) Run pipeline
 ```
 
+### Launchpad Light Patterns
+
+The setup script runs cat-enticing light patterns on the Launchpad Mini MK3 to attract Nerys:
+
+**Default: Hunt Pattern** (snake chases dot)
+- Snake: 5-segment gradient from bright white (head) → yellow → orange → red (tail)
+- Dot: Bright cool colors (cyan, blue, teal, purple, magenta, green) - changes on catch
+- Snake moves 4 directions (up/down/left/right), dot moves 8 directions
+- Both bounded to 8x8 grid (no wrapping)
+- Tuned for ~10 second average chase duration
+- 12 corner cells forbidden to prevent dot sticking
+
+**Alternative: Random Patterns** (`--pattern random`)
+- 8 patterns cycle every 8 seconds: snake, sparkle, rain, spiral, wave, diagonal, expand, hunt
+
+**Technical details:**
+- Uses MIDI port (not DAW port) for LED control
+- Runs as background process (PID saved to `lights.pid`)
+- Color palette indices from Launchpad Mini MK3 Programmer's Reference Manual (page 11):
+  - Bright colors at indices 5 (red), 9 (orange), 13 (yellow), 17 (green), 21-37 (cyan-green), 41-45 (blue), 49 (purple), 53 (magenta)
+- Reference docs in `docs/Launchpad Mini - Programmers Reference Manual.pdf`
+
+**Setup script workflow**:
+1. Creates session directory in Google Drive
+2. Detects Launchpad and starts hunt pattern as background process
+3. Launches QuickTime Player
+4. Opens Chrome to cat TV URL
+5. Displays manual steps for recording
+6. Script exits; lights continue running
+
 **Shutdown script workflow**:
-1. Stops QuickTime recordings → waits for files to stabilize
-2. Moves recordings from Desktop to session directory
-3. Copies Ableton project files with naming: `YYYYMMDDTHHMMSSZ_ableton_<type>.<ext>`
-4. Closes Ableton Live
-5. Uploads to Google Photos album `ClubMaquis_<session_id>`
-6. Logs all actions to self-documenting `log.jsonl`
+1. Stops Launchpad lights process (reads PID from `lights.pid`, falls back to pgrep)
+   - Note: Lights may take up to 60 seconds to stop if mid-pattern
+2. Prompts user to save QuickTime recordings to session directory
+3. Prompts user to AirDrop iPhone video to session directory
+4. Waits for user confirmation
+5. Scans and logs all files with absolute paths
 
 ## Key Technical Concepts
 
@@ -129,20 +173,6 @@ develop                        <- Integration branch
 contrib/stharrold              <- Personal contribution branch
   ^
 feature/<timestamp>_<slug>     <- Isolated feature (worktree)
-```
-
-### Common Commands
-
-```bash
-# Development
-uv sync                                    # Install dependencies
-uv run pytest                              # Run tests
-uv run ruff check .                        # Lint
-uv run ruff check --fix .                  # Auto-fix linting
-
-# Pre-commit hooks
-uv run pre-commit install                  # Install hooks (one-time)
-uv run pre-commit run --all-files          # Run manually
 ```
 
 ## Critical Guidelines

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """Application launchers for Club Maquis recording sessions."""
 
 from __future__ import annotations
@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 
 def check_launchpad(logger: JSONLLogger) -> bool:
-    """Check if Novation Launchpad is connected via USB.
+    """Check if Novation Launchpad is connected.
+
+    Checks both USB device list and MIDI ports for Launchpad detection.
 
     Args:
         logger: Logger instance for recording the check result.
@@ -20,6 +22,21 @@ def check_launchpad(logger: JSONLLogger) -> bool:
     Returns:
         True if Launchpad is detected, False otherwise.
     """
+    # First try MIDI port detection (more reliable)
+    try:
+        import mido
+
+        output_names = mido.get_output_names()
+        for name in output_names:
+            if "Launchpad" in name:
+                logger.log("launchpad_check", status="connected", method="midi", port=name)
+                return True
+    except ImportError:
+        logger.log("launchpad_check", status="fallback", reason="mido not installed")
+    except Exception as e:
+        logger.log("launchpad_check", status="fallback", reason="midi_error", error=str(e))
+
+    # Fall back to USB device check
     try:
         result = subprocess.run(
             ["system_profiler", "SPUSBDataType"],
@@ -32,7 +49,7 @@ def check_launchpad(logger: JSONLLogger) -> bool:
             logger.log("launchpad_check", status="error", error=error_msg)
             return False
         connected = "Launchpad" in result.stdout
-        logger.log("launchpad_check", status="connected" if connected else "not_found")
+        logger.log("launchpad_check", status="connected" if connected else "not_found", method="usb")
         return connected
     except subprocess.TimeoutExpired:
         logger.log("launchpad_check", status="timeout")

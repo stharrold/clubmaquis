@@ -15,4 +15,3 @@ Modules:
     gphotos: Google Photos upload via gphotos-uploader-cli
     utils: Shared utilities (AppleScript helpers, result types)
 """
-

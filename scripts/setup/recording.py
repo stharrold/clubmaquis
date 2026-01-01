@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024 Club Maquis
+# Copyright (c) 2025 Club Maquis
 """
 Club Maquis Recording Setup Script.
 
@@ -15,45 +15,93 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 from scripts.common.logger import JSONLLogger
-from scripts.setup.launchers import check_launchpad, launch_ableton, launch_chrome_to_url, launch_quicktime
+from scripts.setup.launchers import check_launchpad, launch_chrome_to_url, launch_quicktime
 
-# Base directory for all Club Maquis session data
-# Can be overridden via CLUB_MAQUIS_DATA_DIR environment variable
-_DEFAULT_DATA_DIR = Path.home() / "Documents" / "Data" / "ClubMaquis"
-BASE_DATA_DIR = Path(os.environ.get("CLUB_MAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
+# Base directory for all Club Maquis session data (Google Drive)
+# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise discover GDrive path
+
+
+def _discover_default_data_dir() -> Path:
+    """Discover a reasonable default data directory without hardcoding user details.
+
+    Preference order:
+    1. First Google Drive directory under ~/Library/CloudStorage matching 'GoogleDrive-*'
+       with the existing 'My Drive/My_Drive/ClubMaquis' structure.
+    2. A local 'ClubMaquis' directory under the user's home directory.
+    """
+    cloud_storage_root = Path.home() / "Library" / "CloudStorage"
+    if cloud_storage_root.is_dir():
+        for entry in sorted(cloud_storage_root.iterdir()):
+            if entry.is_dir() and entry.name.startswith("GoogleDrive-"):
+                return entry / "My Drive" / "My_Drive" / "ClubMaquis"
+
+    # Fallback to a neutral, local directory if no Google Drive directory is found
+    return Path.home() / "ClubMaquis"
+
+
+_DEFAULT_DATA_DIR = _discover_default_data_dir()
+BASE_DATA_DIR = Path(os.environ.get("CLUBMAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
 
 # Default cat TV video URL
 DEFAULT_CAT_TV_URL = "https://www.youtube.com/watch?v=2WHuRziGaFg"
 
 # Delay between app launches to allow each app to initialize
-ABLETON_STARTUP_DELAY_SEC = 2
 QUICKTIME_STARTUP_DELAY_SEC = 1
 
 # Banner width for consistent formatting
 BANNER_WIDTH = 58
 
 
-def create_session_directory() -> Path:
+def get_session_timestamp() -> str:
+    """Get current UTC timestamp in session ID format.
+
+    Returns:
+        Timestamp string in YYYYMMDDTHHMMSSZ format.
+    """
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def create_session_directory(session_id: str) -> Path:
     """Create a new timestamped session directory.
+
+    Args:
+        session_id: Session timestamp in YYYYMMDDTHHMMSSZ format.
 
     Returns:
         Path to the created session directory.
     """
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    session_dir = BASE_DATA_DIR / timestamp
+    session_dir = BASE_DATA_DIR / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
 
 
-def display_reminders() -> None:
-    """Display manual steps required after setup."""
+def get_log_filename(session_id: str) -> str:
+    """Get the log filename for a session.
+
+    Args:
+        session_id: Session timestamp in YYYYMMDDTHHMMSSZ format.
+
+    Returns:
+        Log filename in YYYYMMDDTHHMMSSZ_log.jsonl format.
+    """
+    return f"{session_id}_log.jsonl"
+
+
+def display_reminders(session_dir: Path) -> None:
+    """Display manual steps required after setup.
+
+    Args:
+        session_dir: Path to session directory for file naming guidance.
+    """
     border_width = BANNER_WIDTH + 2  # Account for '+' characters on each side
+    date_prefix = datetime.now(UTC).strftime("%Y%m%d")
     print()
     print("=" * border_width)
     print("  MANUAL STEPS REQUIRED")
@@ -61,17 +109,22 @@ def display_reminders() -> None:
     print()
     print("  QuickTime Player:")
     print("    1. File > New Movie Recording (webcam + audio)")
-    print("    2. File > New Screen Recording (Ableton window)")
-    print("    3. Click Record on both")
+    print("    2. Click Record")
     print()
     print("  iPhone:")
-    print("    4. Start camera recording")
+    print("    3. Start camera recording")
     print()
     print("  Sync:")
-    print("    5. CLAP loudly for sync point")
+    print("    4. CLAP loudly for sync point")
     print()
     print("  Then let Nerys DJ!")
     print()
+    print("-" * border_width)
+    print("  FILE NAMING (when saving):")
+    print(f"    {date_prefix}_webcam.mov")
+    print(f"    {date_prefix}_iphone.mov")
+    print()
+    print(f"  SAVE TO: {session_dir}")
     print("=" * border_width)
 
 
@@ -107,38 +160,53 @@ Examples:
     print(f"+{'=' * BANNER_WIDTH}+")
     print()
 
-    # Create session directory
-    session_dir = create_session_directory()
+    # Create session directory with timestamped ID
+    session_id = get_session_timestamp()
+    session_dir = create_session_directory(session_id)
     print(f"Session directory: {session_dir}")
 
-    # Initialize logger
-    log_path = session_dir / "log.jsonl"
+    # Initialize logger with timestamped filename
+    log_filename = get_log_filename(session_id)
+    log_path = session_dir / log_filename
     logger = JSONLLogger(log_path)
-    logger.log("session_created", path=str(session_dir))
+    logger.log("session_created", session_id=session_id, session_dir=str(session_dir), log_file=str(log_path))
     print(f"Log file: {log_path}")
     print()
 
     # Track failures for exit code
     failures = 0
+    lights_pid = None
 
     # Pre-flight check: Launchpad (warning only, not critical)
     print("Checking Launchpad connection...")
-    if check_launchpad(logger):
+    launchpad_connected = check_launchpad(logger)
+    if launchpad_connected:
         print("  [OK] Launchpad Mini MK3 connected")
+        # Start cat-enticing light pattern as background process
+        print("  Starting hunt pattern (runs until shutdown)...")
+        try:
+            # Spawn lights as independent background process
+            lights_process = subprocess.Popen(
+                [sys.executable, "-m", "scripts.setup.run_lights", "--pattern", "hunt"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent process
+            )
+            lights_pid = lights_process.pid
+            # Save PID to session directory for shutdown script
+            pid_file = session_dir / "lights.pid"
+            pid_file.write_text(str(lights_pid))
+            logger.log("launchpad_lights", status="started", pattern="hunt", pid=lights_pid, pid_file=str(pid_file))
+            print(f"  [OK] Hunt pattern running (PID: {lights_pid})")
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"  [!!] Could not start light pattern: {e}")
+            logger.log("launchpad_lights", status="error", error=str(e))
     else:
         print("  [!!] Launchpad not detected - check USB connection")
     print()
 
-    # Launch applications with delays between each
+    # Launch applications
     print("Launching applications...")
-
-    print("  Starting Ableton Live 12 Suite...")
-    if launch_ableton(logger):
-        print("  [OK] Ableton launched")
-    else:
-        print("  [!!] Failed to launch Ableton")
-        failures += 1
-    time.sleep(ABLETON_STARTUP_DELAY_SEC)
 
     print("  Starting QuickTime Player...")
     if launch_quicktime(logger):
@@ -156,10 +224,17 @@ Examples:
         failures += 1
 
     # Log setup complete
-    logger.log("setup_complete", failures=failures)
+    logger.log("setup_complete", failures=failures, session_dir=str(session_dir), lights_pid=lights_pid)
 
     # Display manual steps
-    display_reminders()
+    display_reminders(session_dir)
+
+    # Note about Launchpad lights
+    if lights_pid:
+        print()
+        print("  [*] Hunt pattern running continuously to attract Nerys!")
+        print("      Lights will stop when you run the shutdown script.")
+        print()
 
     print(f"Session: {session_dir}")
     print(f"Log: {log_path}")
