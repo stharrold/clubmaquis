@@ -241,7 +241,7 @@ def run_shutdown(session_id: str) -> int:
 
     # Stop Launchpad lights first
     print()
-    print("Stopping Launchpad lights...")
+    print("Stopping Launchpad lights (may take up to 60s if mid-pattern)...")
     lights_stopped, lights_pid = stop_launchpad_lights(session_dir)
     if lights_pid:
         print(f"  [OK] Lights stopped (PID: {lights_pid})")

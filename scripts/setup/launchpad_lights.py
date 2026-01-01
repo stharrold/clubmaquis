@@ -592,8 +592,17 @@ class LaunchpadLights:
                 key=lambda pos: abs(pos[0] - head[0]) + abs(pos[1] - head[1]),
             )
 
-        # As an absolute last resort, return the head position (should be effectively unreachable)
-        return head
+        # Last resort: try forbidden corners (better than head which causes instant recapture)
+        forbidden_available = [pos for pos in DOT_FORBIDDEN if pos not in snake_set]
+        if forbidden_available:
+            return random.choice(forbidden_available)
+
+        # Absolute last resort: random grid position not in snake (should be unreachable)
+        all_positions = [(r, c) for r in range(8) for c in range(8) if (r, c) not in snake_set]
+        if all_positions:
+            return random.choice(all_positions)
+
+        return head  # Grid completely full (theoretically impossible with 5-segment snake)
 
     def _choose_snake_direction(self, head: tuple[int, int], dot: tuple[int, int], current_dir: tuple[int, int], snake_body: list[tuple[int, int]]) -> tuple[int, int]:
         """Choose snake direction toward dot (square geometry, no wrapping)."""

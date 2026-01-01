@@ -70,7 +70,8 @@ def main() -> int:
                 pattern(PATTERN_DURATION)
                 lights.clear_all_leds()
         else:
-            # Hunt pattern runs continuously
+            # Hunt pattern runs continuously in 60-second cycles
+            # (longer than random patterns to give cat time to engage with chase)
             while lights.running:
                 lights.pattern_hunt(60.0)
                 lights.clear_all_leds()
