@@ -11,6 +11,7 @@ Based on Novation Launchpad Mini MK3 Programmer's Reference Manual.
 
 from __future__ import annotations
 
+import random
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -60,6 +61,26 @@ WARM_COLORS = [
 
 # Animation speed (seconds between frames)
 CHASE_SPEED = 0.08
+
+# How long each pattern runs before switching (seconds)
+PATTERN_DURATION = 8
+
+# All bright colors for variety
+ALL_COLORS = [
+    5,   # Red
+    6,   # Red-orange
+    9,   # Orange
+    13,  # Yellow
+    17,  # Green
+    21,  # Cyan-green
+    37,  # Cyan
+    45,  # Blue
+    49,  # Purple
+    53,  # Magenta
+    57,  # Pink
+    72,  # Bright orange
+    84,  # Bright red
+]
 
 
 class LaunchpadLights:
@@ -181,16 +202,8 @@ class LaunchpadLights:
         channel = 2 if pulse else 0  # Channel 2 = pulsing, Channel 0 = static
         self._send_note_on(note, color, channel)
 
-    def _run_chase_pattern(self) -> None:
-        """Run a chase pattern across the grid.
-
-        Creates a snake-like pattern that moves across all pads,
-        using warm colors that shift as the chase progresses.
-        """
-        self._enter_programmer_mode()
-        self._clear_all_leds()
-
-        # Create a list of all pads in snake order (alternating direction per row)
+    def _pattern_snake(self, duration: float) -> None:
+        """Snake chase pattern - lights chase in a snake across the grid."""
         snake_order = []
         for i, row in enumerate(PAD_GRID):
             if i % 2 == 0:
@@ -198,31 +211,212 @@ class LaunchpadLights:
             else:
                 snake_order.extend(reversed(row))
 
-        trail_length = 8  # Number of pads lit at once (creates trail effect)
+        trail_length = 8
         color_index = 0
+        end_time = time.time() + duration
 
-        while self._running:
+        while self._running and time.time() < end_time:
             for head_pos in range(len(snake_order) + trail_length):
-                if not self._running:
+                if not self._running or time.time() >= end_time:
                     break
-
-                # Clear previous frame
                 self._clear_all_leds()
-
-                # Draw trail behind the head
                 for trail_offset in range(trail_length):
                     pos = head_pos - trail_offset
                     if 0 <= pos < len(snake_order):
-                        # Fade colors as trail gets further from head
                         color_idx = (color_index + trail_offset) % len(WARM_COLORS)
-                        # Use pulsing for head, static for trail
                         pulse = trail_offset == 0
                         self._set_led(snake_order[pos], WARM_COLORS[color_idx], pulse)
-
                 time.sleep(CHASE_SPEED)
-
-            # Cycle through colors for next loop
             color_index = (color_index + 1) % len(WARM_COLORS)
+
+    def _pattern_sparkle(self, duration: float) -> None:
+        """Random sparkle pattern - random pads flash like fireflies."""
+        end_time = time.time() + duration
+        active_pads: dict[int, float] = {}  # note -> expire_time
+
+        while self._running and time.time() < end_time:
+            now = time.time()
+            # Remove expired pads
+            expired = [n for n, exp in active_pads.items() if now >= exp]
+            for note in expired:
+                self._set_led(note, 0)
+                del active_pads[note]
+
+            # Add new random pads
+            if len(active_pads) < 12 and random.random() > 0.3:
+                row = random.choice(PAD_GRID)
+                note = random.choice(row)
+                if note not in active_pads:
+                    color = random.choice(ALL_COLORS)
+                    pulse = random.random() > 0.5
+                    self._set_led(note, color, pulse)
+                    active_pads[note] = now + random.uniform(0.2, 0.8)
+
+            time.sleep(0.05)
+
+        # Clear remaining
+        for note in active_pads:
+            self._set_led(note, 0)
+
+    def _pattern_rain(self, duration: float) -> None:
+        """Rain pattern - drops fall from top to bottom."""
+        end_time = time.time() + duration
+        drops: list[tuple[int, int, int]] = []  # (col, row, color)
+
+        while self._running and time.time() < end_time:
+            self._clear_all_leds()
+
+            # Move drops down
+            new_drops = []
+            for col, row, color in drops:
+                new_row = row + 1
+                if new_row < 8:
+                    new_drops.append((col, new_row, color))
+                    self._set_led(PAD_GRID[new_row][col], color)
+            drops = new_drops
+
+            # Add new drops at top
+            if random.random() > 0.5:
+                col = random.randint(0, 7)
+                color = random.choice(WARM_COLORS)
+                drops.append((col, 0, color))
+                self._set_led(PAD_GRID[0][col], color, pulse=True)
+
+            time.sleep(0.12)
+
+    def _pattern_spiral(self, duration: float) -> None:
+        """Spiral pattern - lights spiral from outside to center."""
+        # Create spiral order
+        spiral = []
+        top, bottom, left, right = 0, 7, 0, 7
+        while top <= bottom and left <= right:
+            for c in range(left, right + 1):
+                spiral.append(PAD_GRID[top][c])
+            top += 1
+            for r in range(top, bottom + 1):
+                spiral.append(PAD_GRID[r][right])
+            right -= 1
+            if top <= bottom:
+                for c in range(right, left - 1, -1):
+                    spiral.append(PAD_GRID[bottom][c])
+                bottom -= 1
+            if left <= right:
+                for r in range(bottom, top - 1, -1):
+                    spiral.append(PAD_GRID[r][left])
+                left += 1
+
+        trail_length = 10
+        color_index = 0
+        end_time = time.time() + duration
+
+        while self._running and time.time() < end_time:
+            for head_pos in range(len(spiral) + trail_length):
+                if not self._running or time.time() >= end_time:
+                    break
+                self._clear_all_leds()
+                for trail_offset in range(trail_length):
+                    pos = head_pos - trail_offset
+                    if 0 <= pos < len(spiral):
+                        color_idx = (color_index + trail_offset) % len(ALL_COLORS)
+                        self._set_led(spiral[pos], ALL_COLORS[color_idx], trail_offset == 0)
+                time.sleep(CHASE_SPEED)
+            color_index = (color_index + 2) % len(ALL_COLORS)
+
+    def _pattern_wave(self, duration: float) -> None:
+        """Wave pattern - horizontal waves sweep across."""
+        end_time = time.time() + duration
+        wave_pos = 0
+        color_index = 0
+
+        while self._running and time.time() < end_time:
+            self._clear_all_leds()
+            # Light up columns based on wave position
+            for offset in range(3):
+                col = (wave_pos - offset) % 8
+                for row in range(8):
+                    color = WARM_COLORS[(color_index + offset) % len(WARM_COLORS)]
+                    self._set_led(PAD_GRID[row][col], color, offset == 0)
+
+            wave_pos = (wave_pos + 1) % 8
+            if wave_pos == 0:
+                color_index = (color_index + 1) % len(WARM_COLORS)
+            time.sleep(0.1)
+
+    def _pattern_diagonal(self, duration: float) -> None:
+        """Diagonal chase pattern - lights move diagonally."""
+        diagonals = []
+        for d in range(15):  # 15 diagonals in 8x8 grid
+            diag = []
+            for r in range(8):
+                c = d - r
+                if 0 <= c < 8:
+                    diag.append(PAD_GRID[r][c])
+            if diag:
+                diagonals.append(diag)
+
+        end_time = time.time() + duration
+        color_index = 0
+
+        while self._running and time.time() < end_time:
+            for i, diag in enumerate(diagonals):
+                if not self._running or time.time() >= end_time:
+                    break
+                self._clear_all_leds()
+                color = ALL_COLORS[(color_index + i) % len(ALL_COLORS)]
+                for note in diag:
+                    self._set_led(note, color, True)
+                # Also show trailing diagonals
+                for trail in range(1, 3):
+                    if i - trail >= 0:
+                        trail_color = WARM_COLORS[(color_index + i - trail) % len(WARM_COLORS)]
+                        for note in diagonals[i - trail]:
+                            self._set_led(note, trail_color)
+                time.sleep(0.08)
+            color_index = (color_index + 1) % len(ALL_COLORS)
+
+    def _pattern_expand(self, duration: float) -> None:
+        """Expanding rings from center."""
+        end_time = time.time() + duration
+        color_index = 0
+
+        while self._running and time.time() < end_time:
+            for radius in range(6):
+                if not self._running or time.time() >= end_time:
+                    break
+                self._clear_all_leds()
+                color = ALL_COLORS[color_index % len(ALL_COLORS)]
+
+                # Draw ring at current radius
+                for r in range(8):
+                    for c in range(8):
+                        dist = max(abs(r - 3.5), abs(c - 3.5))
+                        if radius <= dist < radius + 1:
+                            self._set_led(PAD_GRID[r][c], color, True)
+                        elif radius - 1 <= dist < radius:
+                            self._set_led(PAD_GRID[r][c], WARM_COLORS[color_index % len(WARM_COLORS)])
+
+                time.sleep(0.15)
+            color_index = (color_index + 1) % len(ALL_COLORS)
+
+    def _run_random_patterns(self) -> None:
+        """Run random patterns, cycling every few seconds."""
+        self._enter_programmer_mode()
+        self._clear_all_leds()
+
+        patterns = [
+            self._pattern_snake,
+            self._pattern_sparkle,
+            self._pattern_rain,
+            self._pattern_spiral,
+            self._pattern_wave,
+            self._pattern_diagonal,
+            self._pattern_expand,
+        ]
+
+        while self._running:
+            pattern = random.choice(patterns)
+            pattern(PATTERN_DURATION)
+            self._clear_all_leds()
 
         self._clear_all_leds()
         self._exit_programmer_mode()
@@ -241,9 +435,9 @@ class LaunchpadLights:
             return True
 
         self._running = True
-        self._thread = threading.Thread(target=self._run_chase_pattern, daemon=True)
+        self._thread = threading.Thread(target=self._run_random_patterns, daemon=True)
         self._thread.start()
-        self._log("launchpad_lights", status="started", pattern="chase")
+        self._log("launchpad_lights", status="started", pattern="random")
         return True
 
     def stop(self) -> None:
