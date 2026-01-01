@@ -159,7 +159,7 @@ def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
                         if stopped_pid is None:
                             stopped_pid = pid
                     except (ValueError, ProcessLookupError, PermissionError):
-                        pass
+                        pass  # Ignore individual kill failures; continue stopping others
     except (subprocess.SubprocessError, OSError):
         pass  # pgrep failed, continue with whatever we have
 

@@ -132,7 +132,8 @@ The setup script runs cat-enticing light patterns on the Launchpad Mini MK3 to a
 6. Script exits; lights continue running
 
 **Shutdown script workflow**:
-1. Stops Launchpad lights process (reads PID from `lights.pid`)
+1. Stops Launchpad lights process (reads PID from `lights.pid`, falls back to pgrep)
+   - Note: Lights may take up to 60 seconds to stop if mid-pattern
 2. Prompts user to save QuickTime recordings to session directory
 3. Prompts user to AirDrop iPhone video to session directory
 4. Waits for user confirmation
