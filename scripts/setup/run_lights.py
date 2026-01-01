@@ -35,8 +35,12 @@ def main() -> int:
 
     def shutdown_handler(signum, frame):
         """Handle shutdown signals gracefully."""
-        lights.disconnect()
-        sys.exit(0)
+        try:
+            lights.disconnect()
+        except Exception:
+            pass  # Ignore cleanup errors; process is exiting anyway
+        finally:
+            sys.exit(0)
 
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGTERM, shutdown_handler)

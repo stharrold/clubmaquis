@@ -14,7 +14,7 @@ from __future__ import annotations
 import random
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 try:
     import mido
@@ -135,7 +135,7 @@ class LaunchpadLights:
             logger: Optional logger for recording actions.
         """
         self.logger = logger
-        self._outport: mido.ports.BaseOutput | None = None
+        self._outport: Any = None  # mido.ports.BaseOutput when connected
         self._running = False
         self._thread: threading.Thread | None = None
 

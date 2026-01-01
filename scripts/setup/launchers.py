@@ -32,9 +32,9 @@ def check_launchpad(logger: JSONLLogger) -> bool:
                 logger.log("launchpad_check", status="connected", method="midi", port=name)
                 return True
     except ImportError:
-        pass  # mido not installed, fall back to USB check
-    except Exception:
-        pass  # MIDI check failed, fall back to USB check
+        logger.log("launchpad_check", status="fallback", reason="mido not installed")
+    except Exception as e:
+        logger.log("launchpad_check", status="fallback", reason="midi_error", error=str(e))
 
     # Fall back to USB device check
     try:
