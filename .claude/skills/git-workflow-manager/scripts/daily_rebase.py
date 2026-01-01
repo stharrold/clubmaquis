@@ -104,6 +104,10 @@ def daily_rebase(contrib_branch):
                 counts = div_result.stdout.strip().split()
                 if len(counts) == 2:
                     local_ahead, remote_ahead = int(counts[0]), int(counts[1])
+                    # Interpret divergence scenarios using rev-list counts:
+                    #   1) local_ahead > 0 and remote_ahead > 0: histories have diverged → abort and require manual resolution.
+                    #   2) remote_ahead > 0 only: remote has new commits → pull with rebase before proceeding.
+                    #   3) otherwise: local is ahead or equal to remote → safe to proceed with rebase.
                     if local_ahead > 0 and remote_ahead > 0:
                         print(f"[FAIL] DIVERGENCE DETECTED: {contrib_branch} has diverged from origin", file=sys.stderr)
                         print(f"  Local has {local_ahead} commits not on remote", file=sys.stderr)

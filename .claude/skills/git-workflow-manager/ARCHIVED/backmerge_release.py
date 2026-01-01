@@ -192,11 +192,8 @@ def rebase_release_branch(release_branch, target_branch):
             # Rebase failed - abort and provide helpful error (Issue #136)
             subprocess.run(["git", "rebase", "--abort"], capture_output=True, check=False)
             # Check both stderr and stdout to distinguish conflict from other failures (Issue #140, #146)
-            # Extract error parts with intermediate variables for clarity (Issue #152)
-            stderr_part = result.stderr or ""
-            stdout_part = result.stdout or ""
-            separator = "\n" if stderr_part and stdout_part else ""
-            error_output = stderr_part + separator + stdout_part
+            # Combine stderr and stdout, skipping empty parts (Issue #152)
+            error_output = "\n".join(filter(None, [result.stderr or "", result.stdout or ""]))
             if "CONFLICT" in error_output or "conflict" in error_output.lower():
                 error_type = "Rebase conflict"
             else:

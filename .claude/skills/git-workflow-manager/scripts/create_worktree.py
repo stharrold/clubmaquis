@@ -63,8 +63,8 @@ def setup_agentdb_symlink(worktree_path: Path, main_repo_path: Path) -> bool:
 
         # Try symlink first (works on all platforms if permissions allow)
         try:
-            relative_target = os.path.relpath(main_db_path, worktree_state_dir)
-            worktree_db_path.symlink_to(relative_target)
+            # Use absolute path for target to avoid fragile relative symlinks
+            worktree_db_path.symlink_to(main_db_path.resolve())
             return True
         except (OSError, PermissionError) as symlink_error:
             # On Windows, symlink may fail without Developer Mode or admin

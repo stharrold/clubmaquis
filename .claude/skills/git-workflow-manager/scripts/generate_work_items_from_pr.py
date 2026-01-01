@@ -145,7 +145,7 @@ class PRFeedbackWorkItemGenerator:
                 ["gh", "api", "graphql", "-f", f"query={GITHUB_GRAPHQL_TEMPLATE}", "-f", f"owner={owner}", "-f", f"repo={repo}", "-F", f"pr={pr_number}"],
                 text=True,
                 stderr=subprocess.PIPE,
-                timeout=30,
+                timeout=60,  # 60s for large PRs with many review threads
             )
             data = json.loads(result)
 
