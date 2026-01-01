@@ -47,12 +47,16 @@ PAD_GRID = [
 ]
 
 # Snake colors: gradient from bright white head to bright red tail (length=5)
+# Based on Launchpad Mini MK3 palette (page 11 of Programmer's Reference):
+#   Row 0 (0-7): off, grays, white, pinks
+#   Row 1 (8-15): reds(5-7), oranges(8-11), yellows(12-15)
+#   Bright colors: 5=red, 9=orange, 13=yellow
 WARM_COLORS = [
     3,   # Bright white (head)
-    68,  # Bright yellow
-    72,  # Bright orange
-    60,  # Bright red-orange
-    84,  # Bright red (tail)
+    13,  # Bright yellow
+    9,   # Bright orange
+    6,   # Red-orange (medium red)
+    5,   # Bright red (tail)
 ]
 
 # Animation speed (seconds between frames)
@@ -61,40 +65,36 @@ CHASE_SPEED = 0.08
 # How long each pattern runs before switching (seconds)
 PATTERN_DURATION = 8
 
-# All bright colors for variety
+# All bright colors for variety (from palette page 11)
 ALL_COLORS = [
-    5,   # Red
-    6,   # Red-orange
-    9,   # Orange
-    13,  # Yellow
-    17,  # Green
-    21,  # Cyan-green
-    37,  # Cyan
-    45,  # Blue
-    49,  # Purple
-    53,  # Magenta
-    57,  # Pink
-    72,  # Bright orange
-    84,  # Bright red
+    5,   # Bright red
+    9,   # Bright orange
+    13,  # Bright yellow
+    17,  # Bright lime-green
+    21,  # Bright green
+    25,  # Bright green-cyan
+    29,  # Bright cyan-green
+    33,  # Bright teal
+    37,  # Bright cyan
+    41,  # Bright blue-cyan
+    45,  # Bright blue
+    49,  # Bright purple
+    53,  # Bright magenta
+    57,  # Bright pink
 ]
 
-# Cool colors for the dot (prey) - bright and varied
+# Cool colors for the dot (prey) - bright colors from palette (page 11)
+# Using the brightest version of each cool hue
 COOL_COLORS = [
-    79,  # Bright cyan
-    78,  # Bright blue
-    80,  # Bright teal 1
-    81,  # Bright teal 2
-    82,  # Bright sky 1
-    83,  # Bright sky 2
-    85,  # Bright indigo 1
-    86,  # Bright indigo 2
-    87,  # Bright purple 1
-    88,  # Bright purple 2
-    89,  # Bright magenta 1
-    90,  # Bright magenta 2
-    77,  # Bright green 2
-    76,  # Bright green 1
-    73,  # Bright lime 1
+    37,  # Bright cyan
+    41,  # Bright blue-cyan
+    45,  # Bright blue
+    49,  # Bright purple
+    53,  # Bright magenta
+    33,  # Bright teal
+    29,  # Bright cyan-green
+    25,  # Bright green-cyan
+    21,  # Bright green
 ]
 
 # Snake movement directions (up, down, left, right only)
