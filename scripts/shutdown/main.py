@@ -6,15 +6,12 @@ Usage:
     uv run python scripts/shutdown/main.py <YYYYMMDDTHHMMSSZ>
 
 This script:
-1. Stops QuickTime recordings (webcam + screen)
-2. Waits for recordings to save to Desktop
-3. Moves recordings from Desktop to session directory
-4. Copies Ableton project files to session directory
-5. Closes Ableton Live
-6. Uploads session files to Google Photos
-7. Logs all actions to log.jsonl
+1. Prompts user to save QuickTime recordings to session directory
+2. Prompts user to AirDrop iPhone video to session directory
+3. Waits for user confirmation
+4. Logs all files in session directory with absolute paths
 
-Note: Chrome MCP tab should be closed by Claude before running this script.
+Note: User manually names files as YYYYMMDD_<filename>.<ext>
 """
 
 from __future__ import annotations
@@ -22,45 +19,49 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import shutil
+import signal
 import sys
-import time
 from pathlib import Path
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.shutdown import ableton, gphotos, quicktime  # noqa: E402
-from scripts.shutdown.utils import wait_for_files_stable  # noqa: E402
 from src.clubmaquis.session_logger import ActionStatus, ActionType, SessionLogger  # noqa: E402
 
-# Base directory for all Club Maquis sessions
-# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise default to ~/Documents/Data/ClubMaquis
-BASE_DATA_DIR = Path(os.environ.get("CLUBMAQUIS_DATA_DIR", Path.home() / "Documents" / "Data" / "ClubMaquis"))
+# Base directory for all Club Maquis sessions (Google Drive)
+# Use CLUBMAQUIS_DATA_DIR env var if set, otherwise discover GDrive path
 
-# Desktop path for QuickTime recordings
-DESKTOP_PATH = Path.home() / "Desktop"
+
+def _discover_default_data_dir() -> Path:
+    """Discover a reasonable default data directory without hardcoding user details.
+
+    Preference order:
+    1. First Google Drive directory under ~/Library/CloudStorage matching 'GoogleDrive-*'
+       with the existing 'My Drive/My_Drive/ClubMaquis' structure.
+    2. A local 'ClubMaquis' directory under the user's home directory.
+    """
+    cloud_storage_root = Path.home() / "Library" / "CloudStorage"
+    if cloud_storage_root.is_dir():
+        for entry in sorted(cloud_storage_root.iterdir()):
+            if entry.is_dir() and entry.name.startswith("GoogleDrive-"):
+                return entry / "My Drive" / "My_Drive" / "ClubMaquis"
+
+    # Fallback to a neutral, local directory if no Google Drive directory is found
+    return Path.home() / "ClubMaquis"
+
+
+_DEFAULT_DATA_DIR = _discover_default_data_dir()
+BASE_DATA_DIR = Path(os.environ.get("CLUBMAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
 
 # Pattern to match session ID format
 SESSION_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z$")
 
-# QuickTime recording patterns on Desktop
-QUICKTIME_PATTERNS = {
-    "screen": "Screen Recording*.mov",
-    "webcam": "Untitled*.mov",
-}
-
-# Time to wait for QuickTime files to save (seconds)
-# Rationale: QuickTime may take 20-30s to save large recordings (1080p 60fps)
-# Timeout of 30s provides margin for slow disk writes without blocking too long
-QUICKTIME_SAVE_TIMEOUT = 30.0
-# Rationale: 2s stability window ensures file has stopped growing
-# Shorter windows may falsely detect stability during brief write pauses
-QUICKTIME_STABILITY_TIME = 2.0
-
 # Script version for logging
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "2.0.0"
+
+# Banner width for consistent formatting
+BANNER_WIDTH = 60
 
 
 def validate_session_id(session_id: str) -> bool:
@@ -83,160 +84,119 @@ def get_session_dir(session_id: str) -> Path:
     session_dir = (BASE_DATA_DIR / session_id).resolve()
     base_resolved = BASE_DATA_DIR.resolve()
     # Validate path stays within BASE_DATA_DIR (prevents path injection)
-    try:
-        # Python 3.9+: use is_relative_to for robust containment check
-        if not session_dir.is_relative_to(base_resolved):
-            raise ValueError(f"Invalid session directory: {session_dir}")
-    except AttributeError:
-        # Python < 3.9 fallback
-        if base_resolved not in session_dir.parents and session_dir != base_resolved:
-            raise ValueError(f"Invalid session directory: {session_dir}")
+    if not session_dir.is_relative_to(base_resolved):
+        raise ValueError(f"Invalid session directory: {session_dir}")
     return session_dir
 
 
-def find_quicktime_files() -> dict[str, list[Path]]:
-    """Find all QuickTime recording files on Desktop.
-
-    Returns:
-        Dict with 'webcam' and 'screen' keys, values are lists of Paths.
-    """
-    files: dict[str, list[Path]] = {"webcam": [], "screen": []}
-
-    for file_type, pattern in QUICKTIME_PATTERNS.items():
-        matching_files = list(DESKTOP_PATH.glob(pattern))
-        files[file_type] = sorted(matching_files)
-
-    return files
-
-
-def wait_for_quicktime_files(logger: SessionLogger) -> dict[str, list[Path]]:
-    """Wait for QuickTime files to appear and stabilize on Desktop.
+def get_log_filename(session_id: str) -> str:
+    """Get the log filename for a session.
 
     Args:
-        logger: Session logger for recording progress.
+        session_id: Session timestamp in YYYYMMDDTHHMMSSZ format.
 
     Returns:
-        Dict with file types and their paths.
+        Log filename in YYYYMMDDTHHMMSSZ_log.jsonl format.
     """
-    logger.log(
-        ActionType.QUICKTIME_SAVE,
-        ActionStatus.STARTED,
-        "Waiting for QuickTime recordings to save",
-        details={
-            "timeout_seconds": QUICKTIME_SAVE_TIMEOUT,
-            "stability_seconds": QUICKTIME_STABILITY_TIME,
-            "patterns": QUICKTIME_PATTERNS,
-        },
-    )
+    return f"{session_id}_log.jsonl"
 
-    # Wait for files to appear and stabilize
-    time.sleep(2)  # Initial delay for QuickTime to start saving
 
-    result_files: dict[str, list[Path]] = {"webcam": [], "screen": []}
+def find_session_files(session_dir: Path) -> list[Path]:
+    """Find all files in the session directory.
 
-    for file_type, pattern in QUICKTIME_PATTERNS.items():
-        stable_files = wait_for_files_stable(
-            DESKTOP_PATH,
-            pattern,
-            timeout_seconds=QUICKTIME_SAVE_TIMEOUT,
-            stability_seconds=QUICKTIME_STABILITY_TIME,
+    Args:
+        session_dir: Path to session directory.
+
+    Returns:
+        List of absolute paths to files in the session directory.
+    """
+    if not session_dir.exists():
+        return []
+    return sorted([f.resolve() for f in session_dir.iterdir() if f.is_file()])
+
+
+def stop_launchpad_lights(session_dir: Path) -> tuple[bool, int | None]:
+    """Stop the Launchpad lights background process.
+
+    Args:
+        session_dir: Path to session directory containing lights.pid.
+
+    Returns:
+        Tuple of (success, pid) - pid is None if no PID file found.
+    """
+    import subprocess
+
+    pid_file = session_dir / "lights.pid"
+    stopped_pid = None
+
+    # Try PID file first
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            stopped_pid = pid
+        except (ValueError, ProcessLookupError):
+            pass  # PID invalid or process already gone
+        except PermissionError:
+            return False, None
+        finally:
+            pid_file.unlink(missing_ok=True)
+
+    # Also search for process by command pattern (handles Google Drive sync delay)
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "scripts.setup.run_lights"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
-        result_files[file_type] = stable_files
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    try:
+                        pid = int(line)
+                        os.kill(pid, signal.SIGTERM)
+                        if stopped_pid is None:
+                            stopped_pid = pid
+                    except (ValueError, ProcessLookupError, PermissionError):
+                        pass
+    except (subprocess.SubprocessError, OSError):
+        pass  # pgrep failed, continue with whatever we have
 
-    return result_files
+    return True, stopped_pid
 
 
-def move_quicktime_files(
-    session_dir: Path,
-    session_id: str,
-    qt_files: dict[str, list[Path]],
-    logger: SessionLogger,
-) -> list[Path]:
-    """Move QuickTime recording files from Desktop to session directory.
+def display_save_prompts(session_dir: Path, session_id: str) -> None:
+    """Display prompts for user to save files.
 
     Args:
-        session_dir: Destination session directory.
-        session_id: Session timestamp for file naming.
-        qt_files: Dict of file type to list of paths.
-        logger: Session logger for recording actions.
-
-    Returns:
-        List of destination paths for moved files.
+        session_dir: Path to session directory.
+        session_id: Session timestamp for file naming guidance.
     """
-    moved_files = []
+    date_prefix = session_id[:8]  # YYYYMMDD from YYYYMMDDTHHMMSSZ
 
-    for file_type, source_paths in qt_files.items():
-        if not source_paths:
-            logger.log_skipped(
-                ActionType.FILE_MOVE,
-                f"No {file_type} recording found on Desktop",
-                details={
-                    "file_type": file_type,
-                    "source_location": str(DESKTOP_PATH),
-                    "pattern": QUICKTIME_PATTERNS[file_type],
-                },
-            )
-            continue
-
-        # Handle multiple files of the same type
-        for idx, source_path in enumerate(source_paths, start=1):
-            # Rename to: YYYYMMDDTHHMMSSZ_quicktime_<type>.mov
-            # or YYYYMMDDTHHMMSSZ_quicktime_<type>_<n>.mov for multiples
-            if len(source_paths) == 1:
-                new_name = f"{session_id}_quicktime_{file_type}.mov"
-            else:
-                new_name = f"{session_id}_quicktime_{file_type}_{idx}.mov"
-
-            dest_path = session_dir / new_name
-
-            # Check if destination already exists
-            if dest_path.exists():
-                logger.log_failed(
-                    ActionType.FILE_MOVE,
-                    f"Destination already exists: {new_name}",
-                    details={
-                        "source": str(source_path),
-                        "destination": str(dest_path),
-                        "skipped": True,
-                    },
-                )
-                continue
-
-            logger.log_start(
-                ActionType.FILE_MOVE,
-                f"Moving {file_type} recording",
-                details={
-                    "source": str(source_path),
-                    "destination": str(dest_path),
-                    "original_name": source_path.name,
-                    "new_name": new_name,
-                },
-            )
-
-            try:
-                shutil.move(str(source_path), str(dest_path))
-                moved_files.append(dest_path)
-                logger.log_success(
-                    ActionType.FILE_MOVE,
-                    f"Moved {file_type} recording",
-                    details={
-                        "source": str(source_path),
-                        "destination": str(dest_path),
-                        "file_size_bytes": dest_path.stat().st_size,
-                    },
-                )
-            except OSError as e:
-                logger.log_failed(
-                    ActionType.FILE_MOVE,
-                    f"Failed to move {file_type} recording: {e}",
-                    details={
-                        "source": str(source_path),
-                        "destination": str(dest_path),
-                        "error": str(e),
-                    },
-                )
-
-    return moved_files
+    print()
+    print("=" * BANNER_WIDTH)
+    print("  SAVE FILES TO SESSION DIRECTORY")
+    print("=" * BANNER_WIDTH)
+    print()
+    print(f"  Session: {session_dir}")
+    print()
+    print("-" * BANNER_WIDTH)
+    print("  1. QUICKTIME RECORDINGS")
+    print("-" * BANNER_WIDTH)
+    print("     In QuickTime: File > Save")
+    print(f"     Save to: {session_dir}")
+    print(f"     Name as: {date_prefix}_webcam.mov")
+    print()
+    print("-" * BANNER_WIDTH)
+    print("  2. IPHONE VIDEO")
+    print("-" * BANNER_WIDTH)
+    print("     AirDrop video to this Mac")
+    print(f"     Move to: {session_dir}")
+    print(f"     Name as: {date_prefix}_iphone.mov")
+    print()
+    print("=" * BANNER_WIDTH)
 
 
 def run_shutdown(session_id: str) -> int:
@@ -256,187 +216,134 @@ def run_shutdown(session_id: str) -> int:
         print("The setup script should create this directory before shutdown.")
         return 1
 
-    # Initialize logger
-    logger = SessionLogger(session_dir)
+    # Initialize logger with timestamped filename
+    log_filename = get_log_filename(session_id)
+    logger = SessionLogger(session_dir, log_filename)
 
-    # Log session start with full context
+    # Log session shutdown start with full context
     logger.log_start(
         ActionType.SESSION_END,
         "Starting shutdown sequence",
         details={
             "session_id": session_id,
-            "session_dir": str(session_dir),
-            "base_data_dir": str(BASE_DATA_DIR),
-            "desktop_path": str(DESKTOP_PATH),
-            "ableton_user_library": str(ableton.DEFAULT_USER_LIBRARY),
-            "quicktime_patterns": QUICKTIME_PATTERNS,
-            "quicktime_save_timeout": QUICKTIME_SAVE_TIMEOUT,
+            "session_dir": str(session_dir.resolve()),
+            "base_data_dir": str(BASE_DATA_DIR.resolve()),
+            "log_file": str((session_dir / log_filename).resolve()),
             "script_version": SCRIPT_VERSION,
         },
     )
 
-    errors_occurred = False
+    # Print banner
+    print()
+    print(f"+{'=' * BANNER_WIDTH}+")
+    print(f"|{'CLUB MAQUIS SHUTDOWN':^{BANNER_WIDTH}}|")
+    print(f"+{'=' * BANNER_WIDTH}+")
 
-    # Step 1: Stop QuickTime recordings
-    logger.log_start(
-        ActionType.QUICKTIME_STOP,
-        "Stopping QuickTime recordings",
-        details={"expected_types": list(QUICKTIME_PATTERNS.keys())},
-    )
-
-    qt_result = quicktime.stop_all_recordings()
-
-    if qt_result.success:
-        logger.log_success(
-            ActionType.QUICKTIME_STOP,
-            qt_result.message,
-            details={"documents_stopped": qt_result.details.get("documents_stopped", 0)},
+    # Stop Launchpad lights first
+    print()
+    print("Stopping Launchpad lights...")
+    lights_stopped, lights_pid = stop_launchpad_lights(session_dir)
+    if lights_pid:
+        print(f"  [OK] Lights stopped (PID: {lights_pid})")
+        logger.log(
+            ActionType.LAUNCHPAD_LIGHTS,
+            ActionStatus.SUCCESS,
+            "Stopped Launchpad lights",
+            details={"pid": lights_pid},
         )
+    elif lights_stopped:
+        print("  [--] No lights process found (already stopped or not started)")
     else:
-        logger.log_failed(
-            ActionType.QUICKTIME_STOP,
-            qt_result.message,
-            details={"error": qt_result.message},
-        )
-        errors_occurred = True
-
-    # Step 2: Wait for QuickTime files to save to Desktop
-    qt_files = wait_for_quicktime_files(logger)
-
-    total_files = sum(len(files) for files in qt_files.values())
-    if total_files > 0:
-        logger.log_success(
-            ActionType.QUICKTIME_SAVE,
-            f"Found {total_files} QuickTime recording(s)",
-            details={
-                "screen_recordings": len(qt_files["screen"]),
-                "webcam_recordings": len(qt_files["webcam"]),
-                "files": {k: [str(f) for f in v] for k, v in qt_files.items()},
-            },
-        )
-    else:
-        logger.log_skipped(
-            ActionType.QUICKTIME_SAVE,
-            "No QuickTime recordings found on Desktop",
+        print("  [!!] Failed to stop lights process")
+        logger.log(
+            ActionType.LAUNCHPAD_LIGHTS,
+            ActionStatus.FAILED,
+            "Failed to stop Launchpad lights",
         )
 
-    # Step 3: Move QuickTime files from Desktop to session directory
-    moved_files = move_quicktime_files(session_dir, session_id, qt_files, logger)
+    # Display save prompts
+    display_save_prompts(session_dir, session_id)
 
-    if moved_files:
-        logger.log_success(
-            ActionType.FILE_MOVE,
-            f"Saved {len(moved_files)} QuickTime recording(s) to session",
-            details={"files": [str(f) for f in moved_files]},
-        )
-
-    # Step 4: Quit QuickTime Player
-    qt_quit_result = quicktime.quit_player()
-    if not qt_quit_result.success:
-        logger.log_failed(
-            ActionType.QUICKTIME_STOP,
-            f"Failed to quit QuickTime: {qt_quit_result.message}",
-        )
-
-    # Step 5: Copy Ableton project files
-    logger.log_start(
-        ActionType.FILE_MOVE,
-        "Copying Ableton project files",
+    # Log that user was prompted
+    logger.log(
+        ActionType.USER_PROMPT,
+        ActionStatus.SUCCESS,
+        "Displayed file save instructions to user",
         details={
-            "source": str(ableton.DEFAULT_USER_LIBRARY),
-            "destination": str(session_dir),
-            "extensions": list(ableton.ABLETON_EXTENSIONS.keys()),
-            "max_age_hours": 12,
+            "session_dir": str(session_dir.resolve()),
+            "expected_files": [
+                f"{session_id[:8]}_webcam.mov",
+                f"{session_id[:8]}_iphone.mov",
+            ],
         },
     )
 
-    ableton_result = ableton.copy_project_files(session_dir, session_id)
-
-    if ableton_result.success:
-        logger.log_success(
-            ActionType.FILE_MOVE,
-            ableton_result.message,
-            details={"files_copied": [str(f) for f in ableton_result.files_processed]},
+    # Wait for user confirmation
+    print()
+    try:
+        input("  Press ENTER when files are saved to continue...")
+    except KeyboardInterrupt:
+        print("\n\nShutdown cancelled by user.")
+        logger.log(
+            ActionType.USER_CONFIRM,
+            ActionStatus.FAILED,
+            "User cancelled shutdown",
+            details={"reason": "KeyboardInterrupt"},
         )
-    else:
-        logger.log_failed(
-            ActionType.FILE_MOVE,
-            ableton_result.message,
-            details={
-                "files_copied": [str(f) for f in ableton_result.files_processed],
-                "files_failed": [str(f) for f in ableton_result.files_failed],
-                "errors": ableton_result.details.get("errors", []),
-            },
-        )
-        errors_occurred = True
+        return 1
 
-    # Step 6: Close Ableton Live
-    logger.log_start(
-        ActionType.ABLETON_CLOSE,
-        "Closing Ableton Live",
-        details={"save_on_close": False},
+    logger.log(
+        ActionType.USER_CONFIRM,
+        ActionStatus.SUCCESS,
+        "User confirmed files are saved",
     )
 
-    close_result = ableton.close_app()
+    # Scan session directory for files
+    print()
+    print("-" * BANNER_WIDTH)
+    print("  SCANNING SESSION DIRECTORY")
+    print("-" * BANNER_WIDTH)
 
-    if close_result.success:
-        logger.log_success(ActionType.ABLETON_CLOSE, close_result.message)
-    else:
-        logger.log_failed(
-            ActionType.ABLETON_CLOSE,
-            close_result.message,
-            details={"error": close_result.message},
-        )
-        errors_occurred = True
+    session_files = find_session_files(session_dir)
+    media_extensions = {".mov", ".mp4", ".m4v", ".jpg", ".jpeg", ".png", ".heic"}
+    media_files = [f for f in session_files if f.suffix.lower() in media_extensions]
+    log_files = [f for f in session_files if f.suffix.lower() == ".jsonl"]
 
-    # Step 7: Upload to Google Photos
-    logger.log_start(
-        ActionType.GPHOTOS_UPLOAD,
-        "Uploading session files to Google Photos",
-        details={
-            "session_dir": str(session_dir),
-            "upload_extensions": list(gphotos.UPLOAD_EXTENSIONS),
-        },
-    )
+    print()
+    print(f"  Found {len(media_files)} media file(s):")
+    for f in media_files:
+        size_mb = f.stat().st_size / (1024 * 1024)
+        print(f"    - {f.name} ({size_mb:.1f} MB)")
 
-    upload_result = gphotos.upload_session(session_dir)
+    print()
+    print(f"  Found {len(log_files)} log file(s):")
+    for f in log_files:
+        print(f"    - {f.name}")
 
-    if upload_result.success:
-        logger.log_success(
-            ActionType.GPHOTOS_UPLOAD,
-            upload_result.message,
-            details={
-                "files_uploaded": [str(f) for f in upload_result.files_processed],
-                "album": upload_result.details.get("album"),
-            },
-        )
-    else:
-        logger.log_failed(
-            ActionType.GPHOTOS_UPLOAD,
-            upload_result.message,
-            details={
-                "files_uploaded": [str(f) for f in upload_result.files_processed],
-                "files_failed": [str(f) for f in upload_result.files_failed],
-                "errors": upload_result.details.get("errors", []),
-            },
-        )
-        errors_occurred = True
-
-    # Log session end
-    final_status = ActionStatus.SUCCESS if not errors_occurred else ActionStatus.FAILED
+    # Log session end with absolute paths
     logger.log(
         ActionType.SESSION_END,
-        final_status,
-        "Shutdown sequence complete" if not errors_occurred else "Shutdown completed with errors",
+        ActionStatus.SUCCESS,
+        "Shutdown sequence complete",
         details={
             "session_id": session_id,
-            "session_dir": str(session_dir),
-            "errors_occurred": errors_occurred,
-            "files_in_session": [f.name for f in session_dir.iterdir() if f.is_file()],
+            "session_dir": str(session_dir.resolve()),
+            "media_files": [str(f) for f in media_files],
+            "log_files": [str(f) for f in log_files],
+            "total_files": len(session_files),
         },
     )
 
-    return 0 if not errors_occurred else 1
+    print()
+    print("=" * BANNER_WIDTH)
+    print("  SHUTDOWN COMPLETE")
+    print("=" * BANNER_WIDTH)
+    print()
+    print(f"  Session: {session_dir}")
+    print(f"  Log: {session_dir / log_filename}")
+    print()
+
+    return 0
 
 
 def main() -> int:

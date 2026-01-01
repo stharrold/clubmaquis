@@ -35,7 +35,7 @@ def stop_all_recordings() -> OperationResult:
         )
 
     # AppleScript to stop all recordings
-    script = '''
+    script = """
     tell application "QuickTime Player"
         set docCount to count of documents
         if docCount = 0 then
@@ -52,7 +52,7 @@ def stop_all_recordings() -> OperationResult:
 
         return stoppedCount as string
     end tell
-    '''
+    """
 
     success, stdout, stderr = run_applescript(script)
 
