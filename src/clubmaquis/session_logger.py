@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -27,25 +27,26 @@ class ActionType(str, Enum):
     SESSION_END = "session_end"
     QUICKTIME_STOP = "quicktime_stop"
     QUICKTIME_SAVE = "quicktime_save"
-    ABLETON_CLOSE = "ableton_close"
     CHROME_CLOSE = "chrome_close"
     FILE_MOVE = "file_move"
-    GPHOTOS_UPLOAD = "gphotos_upload"
     FILE_DELETE = "file_delete"
+    USER_PROMPT = "user_prompt"
+    USER_CONFIRM = "user_confirm"
     ERROR = "error"
 
 
 class SessionLogger:
     """Logger that writes actions to a JSONL file with timestamps."""
 
-    def __init__(self, session_dir: Path) -> None:
+    def __init__(self, session_dir: Path, log_filename: str = "log.jsonl") -> None:
         """Initialize the logger.
 
         Args:
             session_dir: Directory for the session (e.g., /Users/.../ClubMaquis/YYYYMMDDTHHMMSSZ/)
+            log_filename: Name of the log file (default: log.jsonl)
         """
         self.session_dir = Path(session_dir)
-        self.log_file = self.session_dir / "log.jsonl"
+        self.log_file = self.session_dir / log_filename
         self._ensure_dir()
 
     def _ensure_dir(self) -> None:
@@ -54,7 +55,7 @@ class SessionLogger:
 
     def _get_timestamp(self) -> str:
         """Get current UTC timestamp in ISO 8601 format with milliseconds."""
-        return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     def log(
         self,

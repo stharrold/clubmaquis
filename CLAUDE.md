@@ -11,7 +11,7 @@ Club Maquis is a cat DJ streaming channel where Nerys (a cat) makes music by ste
 ```bash
 # Install dependencies
 uv sync                                    # Install all dependencies
-brew install ffmpeg fluidsynth gphotos-uploader-cli  # System dependencies (macOS)
+brew install ffmpeg fluidsynth             # System dependencies (macOS)
 
 # Linting and formatting
 uv run ruff check .                        # Lint
@@ -72,40 +72,42 @@ sessions/[date]/
 
 ### Recording Setup
 
-- **Input sources**: Webcam (QuickTime), iPhone, Screen Recording (Ableton), MIDI track
+- **Input sources**: Webcam (QuickTime), iPhone
 - **Sync method**: Clap at session start creates audio transient for alignment
-- **DAW**: Ableton Live 12 Suite with Launchpad Mini MK3
 - **Cat lure**: Bird/fish videos via Chrome (YouTube cat TV)
-- **Session data**: `/Users/stharrold/Documents/Data/ClubMaquis/YYYYMMDDTHHMMSSZ/`
-- **Session log**: Each session has `log.jsonl` with timestamped actions
+- **Session data**: `~/Library/CloudStorage/GoogleDrive-samuel.harrold@gmail.com/My Drive/My_Drive/ClubMaquis/YYYYMMDDTHHMMSSZ/`
+- **Session log**: `YYYYMMDDTHHMMSSZ_log.jsonl` with self-documenting entries and absolute file paths
+- **File naming**: User names files as `YYYYMMDD_<type>.mov` (e.g., `20250101_webcam.mov`)
 
 ### Automation Scripts
 
-Located in `scripts/` directory, these automate recording session lifecycle:
+Located in `scripts/` directory, these manage recording session lifecycle:
 
 ```
 scripts/
 ├── common/
 │   └── logger.py             # Self-documenting JSONL logger (shared)
 ├── setup/
-│   ├── recording.py          # Launch apps, create session dir
+│   ├── recording.py          # Create session dir, launch QuickTime + Chrome
 │   └── launchers.py          # App launching utilities
-├── shutdown/                 # Graceful session shutdown
-│   ├── main.py               # CLI: stops recordings, saves files, uploads to Google Photos
+├── shutdown/
+│   ├── main.py               # CLI: prompts user to save files, logs session
 │   ├── quicktime.py          # AppleScript control for QuickTime
-│   ├── ableton.py            # Ableton file management + close
-│   ├── gphotos.py            # Google Photos upload via gphotos-uploader-cli
 │   └── utils.py              # Shared AppleScript utilities
 └── process/                  # (future) Run pipeline
 ```
 
+**Setup script workflow**:
+1. Creates session directory in Google Drive
+2. Launches QuickTime Player
+3. Opens Chrome to cat TV URL
+4. Displays manual steps for recording
+
 **Shutdown script workflow**:
-1. Stops QuickTime recordings → waits for files to stabilize
-2. Moves recordings from Desktop to session directory
-3. Copies Ableton project files with naming: `YYYYMMDDTHHMMSSZ_ableton_<type>.<ext>`
-4. Closes Ableton Live
-5. Uploads to Google Photos album `ClubMaquis_<session_id>`
-6. Logs all actions to self-documenting `log.jsonl`
+1. Prompts user to save QuickTime recordings to session directory
+2. Prompts user to AirDrop iPhone video to session directory
+3. Waits for user confirmation
+4. Scans and logs all files with absolute paths
 
 ## Key Technical Concepts
 
