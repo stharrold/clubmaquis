@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -23,7 +24,9 @@ from scripts.common.logger import JSONLLogger
 from scripts.setup.launchers import check_launchpad, launch_ableton, launch_chrome_to_url, launch_quicktime
 
 # Base directory for all Club Maquis session data
-BASE_DATA_DIR = Path("/Users/stharrold/Documents/Data/ClubMaquis")
+# Can be overridden via CLUB_MAQUIS_DATA_DIR environment variable
+_DEFAULT_DATA_DIR = Path.home() / "Documents" / "Data" / "ClubMaquis"
+BASE_DATA_DIR = Path(os.environ.get("CLUB_MAQUIS_DATA_DIR", str(_DEFAULT_DATA_DIR)))
 
 # Default cat TV video URL
 DEFAULT_CAT_TV_URL = "https://www.youtube.com/watch?v=2WHuRziGaFg"
@@ -50,10 +53,11 @@ def create_session_directory() -> Path:
 
 def display_reminders() -> None:
     """Display manual steps required after setup."""
+    border_width = BANNER_WIDTH + 2  # Account for '+' characters on each side
     print()
-    print("=" * 60)
+    print("=" * border_width)
     print("  MANUAL STEPS REQUIRED")
-    print("=" * 60)
+    print("=" * border_width)
     print()
     print("  QuickTime Player:")
     print("    1. File > New Movie Recording (webcam + audio)")
@@ -68,7 +72,7 @@ def display_reminders() -> None:
     print()
     print("  Then let Nerys DJ!")
     print()
-    print("=" * 60)
+    print("=" * border_width)
 
 
 def main() -> int:
@@ -114,7 +118,10 @@ Examples:
     print(f"Log file: {log_path}")
     print()
 
-    # Pre-flight check: Launchpad
+    # Track failures for exit code
+    failures = 0
+
+    # Pre-flight check: Launchpad (warning only, not critical)
     print("Checking Launchpad connection...")
     if check_launchpad(logger):
         print("  [OK] Launchpad Mini MK3 connected")
@@ -130,6 +137,7 @@ Examples:
         print("  [OK] Ableton launched")
     else:
         print("  [!!] Failed to launch Ableton")
+        failures += 1
     time.sleep(ABLETON_STARTUP_DELAY_SEC)
 
     print("  Starting QuickTime Player...")
@@ -137,6 +145,7 @@ Examples:
         print("  [OK] QuickTime launched")
     else:
         print("  [!!] Failed to launch QuickTime")
+        failures += 1
     time.sleep(QUICKTIME_STARTUP_DELAY_SEC)
 
     print("  Opening cat TV in Chrome...")
@@ -144,18 +153,21 @@ Examples:
         print("  [OK] Chrome opened to cat TV")
     else:
         print("  [!!] Failed to open Chrome")
+        failures += 1
 
     # Log setup complete
-    logger.log("setup_complete")
+    logger.log("setup_complete", failures=failures)
 
     # Display manual steps
     display_reminders()
 
     print(f"Session: {session_dir}")
     print(f"Log: {log_path}")
+    if failures > 0:
+        print(f"[!!] {failures} application(s) failed to launch")
     print()
 
-    return 0
+    return 1 if failures > 0 else 0
 
 
 if __name__ == "__main__":

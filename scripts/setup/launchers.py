@@ -27,6 +27,10 @@ def check_launchpad(logger: JSONLLogger) -> bool:
             text=True,
             timeout=10,
         )
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else f"Exit code {result.returncode}"
+            logger.log("launchpad_check", status="error", error=error_msg)
+            return False
         connected = "Launchpad" in result.stdout
         logger.log("launchpad_check", status="connected" if connected else "not_found")
         return connected
@@ -36,6 +40,25 @@ def check_launchpad(logger: JSONLLogger) -> bool:
     except (subprocess.SubprocessError, OSError) as e:
         logger.log("launchpad_check", status="error", error=str(e))
         return False
+
+
+def _build_log_kwargs(app_name: str, url: str | None = None, error: str | None = None) -> dict:
+    """Build log kwargs dict with optional url and error fields.
+
+    Args:
+        app_name: Name of the application.
+        url: Optional URL associated with the launch.
+        error: Optional error message.
+
+    Returns:
+        Dict with app, and optionally url and error fields.
+    """
+    kwargs: dict = {"app": app_name}
+    if url:
+        kwargs["url"] = url
+    if error:
+        kwargs["error"] = error
+    return kwargs
 
 
 def _launch_app(app_name: str, logger: JSONLLogger, url: str | None = None) -> bool:
@@ -58,29 +81,17 @@ def _launch_app(app_name: str, logger: JSONLLogger, url: str | None = None) -> b
 
         if result.returncode != 0:
             error_msg = result.stderr.strip() or f"Exit code {result.returncode}"
-            log_kwargs = {"app": app_name, "error": error_msg}
-            if url:
-                log_kwargs["url"] = url
-            logger.log("app_launch_failed", **log_kwargs)
+            logger.log("app_launch_failed", **_build_log_kwargs(app_name, url, error_msg))
             return False
 
-        log_kwargs = {"app": app_name}
-        if url:
-            log_kwargs["url"] = url
-        logger.log("app_launched", **log_kwargs)
+        logger.log("app_launched", **_build_log_kwargs(app_name, url))
         return True
 
     except subprocess.TimeoutExpired:
-        log_kwargs = {"app": app_name, "error": "Launch timed out"}
-        if url:
-            log_kwargs["url"] = url
-        logger.log("app_launch_failed", **log_kwargs)
+        logger.log("app_launch_failed", **_build_log_kwargs(app_name, url, "Launch timed out"))
         return False
     except (subprocess.SubprocessError, OSError) as e:
-        log_kwargs = {"app": app_name, "error": str(e)}
-        if url:
-            log_kwargs["url"] = url
-        logger.log("app_launch_failed", **log_kwargs)
+        logger.log("app_launch_failed", **_build_log_kwargs(app_name, url, str(e)))
         return False
 
 
