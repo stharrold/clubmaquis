@@ -1,0 +1,41 @@
+[project]
+name = "clubmaquis"
+version = "0.1.0"
+description = "Cat DJ video processing pipeline - multi-source sync, activity detection, AI music generation"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+pipeline = [
+    "numpy>=1.26.0",
+    "scipy>=1.11.0",
+    "opencv-python>=4.8.0",
+    "pywavelets>=1.4.0",
+    "mido>=1.3.0",
+    "librosa>=0.10.0",
+    "matplotlib>=3.8.0",
+    "scikit-learn>=1.3.0",
+    "scenedetect>=0.6.0",
+    "yt-dlp>=2023.0.0",
+    "pandas>=2.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "keyring>=24.0.0",
+    "pre-commit>=4.5.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 170
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "B", "UP"]
